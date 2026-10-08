@@ -1,0 +1,37 @@
+node_modules
+.next
+out
+build
+.env
+.env*.local
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.log
+npm-debug.log*
+qa-*.txt
+qa-*.sql
+
+# Private uploaded payment proofs: never served by the web server, never committed.
+/storage/
+
+# Secrets, keys and local credentials: never committed.
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials/
+
+# Database backups / dumps and local backup folders: never committed.
+*.dump
+*.sql.gz
+/backups/
+/database/
+
+# Prisma / tooling caches
+.prisma/
+.eslintcache
+coverage/
+

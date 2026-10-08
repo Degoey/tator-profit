@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+@theme {
+  --color-ink: #04070a;
+  --color-ink-soft: #0a1016;
+  --color-ink-card: #0d141b;
+  --color-neon: #2bff9c;
+  --color-neon-dim: #17c476;
+  --color-gold: #f6c453;
+  --color-gold-dim: #c99a2e;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+}
+
+@layer base {
+  * {
+    border-color: color-mix(in oklab, white 10%, transparent);
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: color-mix(in oklab, white 92%, transparent);
+    font-family: var(--font-sans);
+    background-image:
+      radial-gradient(900px 500px at 12% -8%, color-mix(in oklab, var(--color-neon) 16%, transparent), transparent 70%),
+      radial-gradient(760px 460px at 88% 4%, color-mix(in oklab, var(--color-gold) 13%, transparent), transparent 72%);
+    background-attachment: fixed;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-neon) 35%, transparent);
+    color: white;
+  }
+}
+
+@utility text-neon {
+  color: var(--color-neon);
+}
+
+@utility text-gold {
+  color: var(--color-gold);
+}
+
+@utility card-glow {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, white 8%, transparent),
+    0 30px 80px -50px color-mix(in oklab, var(--color-neon) 60%, transparent);
+}
+
+@utility grid-lines {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, white 5%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, white 5%, transparent) 1px, transparent 1px);
+  background-size: 56px 56px;
+}

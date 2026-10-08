@@ -1,0 +1,601 @@
+// Tatorprofit — Prisma schema
+// All monetary and percentage values use exact decimal types (never floats).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+/// Capability level of an administrator account. `User.adminRole` is nullable so
+/// a new administrator has no financial capability until one is granted.
+enum AdminRole {
+  SUPER_ADMIN
+  FINANCE
+  SUPPORT
+  COMPLIANCE
+  VIEWER
+}
+
+enum DepositStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  FLAGGED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  UNDER_REVIEW
+  APPROVED
+  PROCESSING
+  COMPLETED
+  REJECTED
+}
+
+enum ProgramStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum UserProgramStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+  SUSPENDED
+}
+
+enum TransactionType {
+  PROGRAM_JOIN
+  REWARD
+  REFERRAL_REWARD
+  WITHDRAWAL
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  PENDING
+  POSTED
+  REVERSED
+}
+
+enum RewardType {
+  WEEKLY
+  CYCLE
+}
+
+enum RewardStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+  VOID
+}
+
+enum ReferralStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ReferralCommissionStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+  VOID
+}
+
+enum NotificationType {
+  SYSTEM
+  PROGRAM
+  REWARD
+  REFERRAL
+  SECURITY
+}
+
+enum SecurityEventType {
+  LOGIN_SUCCESS
+  LOGIN_FAILED
+  LOGOUT
+  PASSWORD_RESET_REQUESTED
+  PASSWORD_CHANGED
+  SESSION_REVOKED
+  RATE_LIMITED
+}
+
+enum SecuritySeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+model Profile {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid
+  referralCode   String   @unique
+  displayName    String?
+  avatarUrl      String?
+  country        String?
+  city           String?
+  addressLine    String?
+  postalCode     String?
+  timezone       String   @default("UTC")
+  locale         String   @default("id-ID")
+  bio            String?
+  marketingOptIn Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Session {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  tokenHash  String    @unique
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Program {
+  id                 String        @id @default(uuid()) @db.Uuid
+  code               String        @unique
+  name               String
+  description        String?
+  currency           String        @default("USDT")
+  weeklyRewardRate   Decimal       @default(0.1000) @db.Decimal(7, 4)
+  cycleWeeks         Int           @default(4)
+  maxCycleRewardRate Decimal       @default(0.4000) @db.Decimal(7, 4)
+  rewardTerms        String?
+  status             ProgramStatus @default(ACTIVE)
+  isDefault          Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  tiers        ProgramTier[]
+  cycles       ProgramCycle[]
+  userPrograms UserProgram[]
+  rewards      Reward[]
+
+  @@index([status])
+}
+
+model ProgramTier {
+  id         String   @id @default(uuid()) @db.Uuid
+  programId  String   @db.Uuid
+  code       String
+  name       String
+  joinAmount Decimal  @db.Decimal(18, 2)
+  currency   String   @default("USDT")
+  sortOrder  Int      @default(0)
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  program      Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+  userPrograms UserProgram[]
+  rewards      Reward[]
+
+  @@unique([programId, code])
+  @@unique([programId, joinAmount])
+  @@index([programId, isActive, sortOrder])
+}
+
+/// One selectable duration of the reward program (4 / 8 / 12 weeks). The 9 join
+/// amounts (`ProgramTier`) x these 3 cycles are the 27 program combinations.
+/// `targetCycleRewardRate` is the exact `weeklyRewardRate * cycleWeeks` snapshot
+/// (40% / 80% / 120%), stored as Decimal so no financial value is ever a float.
+model ProgramCycle {
+  id                    String   @id @default(uuid()) @db.Uuid
+  programId             String   @db.Uuid
+  /// Duration in weeks: 4, 8 or 12. Never more than 12.
+  cycleWeeks            Int
+  weeklyRewardRate      Decimal  @db.Decimal(7, 4)
+  targetCycleRewardRate Decimal  @db.Decimal(7, 4)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  program      Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+  userPrograms UserProgram[]
+
+  @@unique([programId, cycleWeeks])
+  @@index([programId, isActive, cycleWeeks])
+}
+
+model UserProgram {
+  id                   String            @id @default(uuid()) @db.Uuid
+  userId               String            @db.Uuid
+  programId            String            @db.Uuid
+  tierId               String            @db.Uuid
+  cycleId              String?           @db.Uuid
+  joinAmount           Decimal           @db.Decimal(18, 2)
+  currency             String            @default("USDT")
+  /// Contract snapshot: the rates agreed at join time, so later config edits
+  /// cannot silently change an existing membership's reward targets.
+  weeklyRewardRate     Decimal           @db.Decimal(7, 4)
+  cycleWeeks           Int               @default(4)
+  maxCycleRewardRate   Decimal           @db.Decimal(7, 4)
+  status               UserProgramStatus @default(PENDING)
+  cycleNumber          Int               @default(1)
+  weeksCompleted       Int               @default(0)
+  /// Program funds are recorded by an administrator after the money arrived
+  /// outside the platform; they are never mixed into the reward balance.
+  fundsConfirmedAt     DateTime?
+  fundsConfirmedAmount Decimal           @default(0) @db.Decimal(18, 2)
+  referralCodeUsed     String?
+  joinedAt             DateTime          @default(now())
+  activatedAt          DateTime?
+  completedAt          DateTime?
+  suspendedAt          DateTime?
+  cancelledAt          DateTime?
+  notes                String?
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program         Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  tier            ProgramTier      @relation(fields: [tierId], references: [id], onDelete: Restrict)
+  cycle           ProgramCycle?    @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  rewards         Reward[]
+  transactions    Transaction[]
+  depositRequests DepositRequest[]
+
+  @@index([userId, status])
+  @@index([tierId])
+  @@index([programId, status])
+}
+
+model Balance {
+  id                 String   @id @default(uuid()) @db.Uuid
+  userId             String   @unique @db.Uuid
+  currency           String   @default("USDT")
+  /// Spendable reward balance (only PAID rewards land here).
+  availableAmount    Decimal  @default(0) @db.Decimal(18, 2)
+  /// Approved rewards that are not paid out yet.
+  pendingAmount      Decimal  @default(0) @db.Decimal(18, 2)
+  /// Funds received for program joins, recorded by an administrator.
+  /// Deliberately separate from the reward balance.
+  programFundsAmount Decimal  @default(0) @db.Decimal(18, 2)
+  /// Withdrawable reward money that a pending withdrawal has already claimed.
+  /// Moving money here is what prevents the same balance from being spent twice.
+  reservedAmount     Decimal  @default(0) @db.Decimal(18, 2)
+  totalEarned        Decimal  @default(0) @db.Decimal(18, 2)
+  totalReversed      Decimal  @default(0) @db.Decimal(18, 2)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Append-only ledger. Rows are never deleted and posted money fields are
+/// frozen by a database trigger (see the program_engine migration).
+model Transaction {
+  id            String            @id @default(uuid()) @db.Uuid
+  userId        String            @db.Uuid
+  userProgramId String?           @db.Uuid
+  type          TransactionType
+  status        TransactionStatus @default(PENDING)
+  amount        Decimal           @db.Decimal(18, 2)
+  currency      String            @default("USDT")
+  /// Which balance bucket this entry moves: AVAILABLE, PENDING, PROGRAM_FUNDS or NONE.
+  bucket        String            @default("NONE")
+  balanceBefore Decimal           @db.Decimal(18, 2)
+  balanceAfter  Decimal           @db.Decimal(18, 2)
+  reference     String            @unique
+  description   String?
+  metadata      Json?
+  postedAt      DateTime?
+  reversedAt    DateTime?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user               User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userProgram        UserProgram?         @relation(fields: [userProgramId], references: [id], onDelete: SetNull)
+  reward             Reward?
+  commissionsSourced ReferralCommission[] @relation("CommissionSourceTransaction")
+  commissionsPayouts ReferralCommission[] @relation("CommissionPayoutTransaction")
+
+  @@index([userId, createdAt])
+  @@index([status])
+  @@index([type, createdAt])
+}
+
+model Reward {
+  id            String       @id @default(uuid()) @db.Uuid
+  userId        String       @db.Uuid
+  programId     String       @db.Uuid
+  userProgramId String       @db.Uuid
+  tierId        String       @db.Uuid
+  type          RewardType
+  status        RewardStatus @default(PENDING)
+  amount        Decimal      @db.Decimal(18, 2)
+  currency      String       @default("USDT")
+  rate          Decimal      @db.Decimal(7, 4)
+  /// Week number inside the cycle: 1..4.
+  period        Int
+  cycleNumber   Int          @default(1)
+  scheduledFor  DateTime?
+  approvedAt    DateTime?
+  paidAt        DateTime?
+  transactionId String?      @unique @db.Uuid
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  program     Program      @relation(fields: [programId], references: [id], onDelete: Restrict)
+  userProgram UserProgram  @relation(fields: [userProgramId], references: [id], onDelete: Cascade)
+  tier        ProgramTier  @relation(fields: [tierId], references: [id], onDelete: Restrict)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  /// Idempotency key: one reward row per user + program membership + period.
+  /// Running the reward engine twice can therefore never pay a period twice.
+  @@unique([userProgramId, type, cycleNumber, period])
+  @@index([userId, status])
+  @@index([userId, programId, period])
+}
+
+model Referral {
+  id             String         @id @default(uuid()) @db.Uuid
+  referrerId     String         @db.Uuid
+  referredUserId String         @unique @db.Uuid
+  level          Int            @default(1)
+  codeUsed       String
+  status         ReferralStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  referrer     User                 @relation("ReferralParent", fields: [referrerId], references: [id], onDelete: Restrict)
+  referredUser User                 @relation("ReferralChild", fields: [referredUserId], references: [id], onDelete: Cascade)
+  commissions  ReferralCommission[]
+
+  @@unique([referrerId, referredUserId])
+  @@index([referrerId])
+}
+
+/// One commission row per (source ledger event, beneficiary). The unique key makes
+/// the engine idempotent: replaying the same posted transaction can never pay the
+/// same upline twice.
+model ReferralCommission {
+  id                  String                   @id @default(uuid()) @db.Uuid
+  referralId          String                   @db.Uuid
+  /// The upline account that earns the commission (former `referrerId`).
+  beneficiaryUserId   String                   @db.Uuid
+  /// The downline account whose program event generated the commission.
+  sourceUserId        String                   @db.Uuid
+  /// Posted ledger entry that triggered the commission (PROGRAM_FUNDS bucket).
+  sourceTransactionId String                   @db.Uuid
+  level               Int
+  rate                Decimal                  @db.Decimal(7, 4)
+  baseAmount          Decimal                  @db.Decimal(18, 2)
+  /// Commission value (former `amount`), always `baseAmount * rate` in Decimal.
+  commissionAmount    Decimal                  @db.Decimal(18, 2)
+  currency            String                   @default("USDT")
+  status              ReferralCommissionStatus @default(PENDING)
+  sourceReference     String
+  approvedAt          DateTime?
+  paidAt              DateTime?
+  /// Ledger entry that credited the beneficiary when the commission was paid.
+  payoutTransactionId String?                  @unique @db.Uuid
+  postedAt            DateTime?
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  referral          Referral     @relation(fields: [referralId], references: [id], onDelete: Cascade)
+  beneficiary       User         @relation("CommissionBeneficiary", fields: [beneficiaryUserId], references: [id], onDelete: Cascade)
+  sourceUser        User         @relation("CommissionSource", fields: [sourceUserId], references: [id], onDelete: Cascade)
+  sourceTransaction Transaction  @relation("CommissionSourceTransaction", fields: [sourceTransactionId], references: [id], onDelete: Cascade)
+  payoutTransaction Transaction? @relation("CommissionPayoutTransaction", fields: [payoutTransactionId], references: [id], onDelete: Restrict)
+
+  /// The one and only idempotency key of the engine: a posted source transaction
+  /// can never pay the same beneficiary twice. The legacy
+  /// UNIQUE(referralId, sourceUserId, level, sourceReference) key was dropped by
+  /// migration 20261009130000 because `sourceReference` is denormalised text and
+  /// `createMany({ skipDuplicates: true })` would have silently swallowed a
+  /// legitimate commission on any collision with it.
+  @@unique([sourceTransactionId, beneficiaryUserId])
+  @@index([beneficiaryUserId, status])
+  @@index([sourceTransactionId])
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  type      NotificationType @default(SYSTEM)
+  title     String
+  body      String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model SecurityEvent {
+  id          String            @id @default(uuid()) @db.Uuid
+  userId      String?           @db.Uuid
+  type        SecurityEventType
+  severity    SecuritySeverity  @default(INFO)
+  description String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([type, createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  action      String
+  entityType  String
+  entityId    String?
+  before      Json?
+  after       Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  actor User? @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+}
+
+model User {
+  id              String     @id @default(uuid()) @db.Uuid
+  name            String
+  username        String     @unique
+  email           String     @unique
+  phone           String     @unique
+  passwordHash    String
+  role            UserRole   @default(USER)
+  /// Admin capability level; null means "may sign in to /admin but may do nothing".
+  adminRole       AdminRole?
+  status          UserStatus @default(ACTIVE)
+  emailVerifiedAt DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  profile             Profile?
+  sessions            Session[]
+  passwordResetTokens PasswordResetToken[]
+  userPrograms        UserProgram[]
+  balance             Balance?
+  transactions        Transaction[]
+  rewards             Reward[]
+  referralsMade       Referral[]           @relation("ReferralParent")
+  referredByEntry     Referral?            @relation("ReferralChild")
+  commissionsEarned   ReferralCommission[] @relation("CommissionBeneficiary")
+  commissionsSourced  ReferralCommission[] @relation("CommissionSource")
+  notifications       Notification[]
+  securityEvents      SecurityEvent[]
+  auditLogs           AuditLog[]
+  depositRequests     DepositRequest[]     @relation("DepositOwner")
+  depositsReviewed    DepositRequest[]     @relation("DepositReviewer")
+  withdrawalRequests  WithdrawalRequest[]  @relation("WithdrawalOwner")
+  withdrawalsReviewed WithdrawalRequest[]  @relation("WithdrawalReviewer")
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// A manual deposit request: the member reports money that was sent outside the
+/// platform and attaches a proof file. Submitting never touches a balance; the
+/// money is only credited when an administrator approves the request.
+model DepositRequest {
+  id               String        @id @default(uuid()) @db.Uuid
+  userId           String        @db.Uuid
+  /// The pending membership this deposit is meant to fund.
+  userProgramId    String        @db.Uuid
+  amount           Decimal       @db.Decimal(18, 2)
+  currency         String        @default("USDT")
+  paymentMethod    String
+  paymentReference String
+  /// Private storage key (random file name) — never a user supplied path.
+  proofStorageKey  String
+  proofFileName    String
+  proofMimeType    String
+  proofSize        Int
+  proofUploadedAt  DateTime      @default(now())
+  status           DepositStatus @default(PENDING)
+  reviewedByUserId String?       @db.Uuid
+  reviewedAt       DateTime?
+  rejectionReason  String?
+  reviewNote       String?
+  flaggedReason    String?
+  /// Ledger reference of the credit entry created on approval (unique => one credit).
+  ledgerReference  String?       @unique
+  metadata         Json?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  user        User        @relation("DepositOwner", fields: [userId], references: [id], onDelete: Cascade)
+  userProgram UserProgram @relation(fields: [userProgramId], references: [id], onDelete: Restrict)
+  reviewedBy  User?       @relation("DepositReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+  @@index([userProgramId])
+}
+
+/// A manual withdrawal request. Submitting reserves the amount
+/// (AVAILABLE -> RESERVED); completing it debits the reservation for good and
+/// rejecting it returns the money to the spendable balance.
+model WithdrawalRequest {
+  id                  String           @id @default(uuid()) @db.Uuid
+  userId              String           @db.Uuid
+  amount              Decimal          @db.Decimal(18, 2)
+  currency            String           @default("USDT")
+  method              String
+  destination         String
+  notes               String?
+  status              WithdrawalStatus @default(PENDING)
+  reviewedByUserId    String?          @db.Uuid
+  reviewedAt          DateTime?
+  rejectionReason     String?
+  reviewNote          String?
+  processedAt         DateTime?
+  completedAt         DateTime?
+  /// Ledger references for the reservation debit/credit pair and the final debit.
+  reservedReference   String?          @unique
+  completionReference String?          @unique
+  metadata            Json?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  user       User  @relation("WithdrawalOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User? @relation("WithdrawalReviewer", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}

@@ -167,6 +167,34 @@ export const adminRoleAssignmentSchema = z.object({
 
 export type AdminRoleAssignmentInput = z.infer<typeof adminRoleAssignmentSchema>;
 
+/**
+ * Administrator balance credit (Tahap 3). The reference is the idempotency key:
+ * submitting the same reference twice must not credit the account twice.
+ */
+export const ADMIN_CREDIT_REFERENCE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,63}$/;
+
+export const adminCreditSchema = z.object({
+  userId: z.string().uuid("Pilih akun penerima yang valid."),
+  amount: decimalAmountSchema.refine(
+    (value) => /[1-9]/.test(value),
+    "Jumlah kredit harus lebih besar dari nol.",
+  ),
+  reason: z
+    .string()
+    .trim()
+    .min(3, "Alasan minimal 3 karakter.")
+    .max(200, "Alasan maksimal 200 karakter."),
+  reference: z
+    .string()
+    .trim()
+    .regex(
+      ADMIN_CREDIT_REFERENCE_PATTERN,
+      "Nomor referensi 3-64 karakter: huruf, angka, titik, garis bawah, titik dua, atau tanda hubung.",
+    ),
+});
+
+export type AdminCreditInput = z.infer<typeof adminCreditSchema>;
+
 
 /** Flattens a Zod error into a `{ field: message }` map for form rendering. */
 export function flattenZodError(error: z.ZodError): Record<string, string> {

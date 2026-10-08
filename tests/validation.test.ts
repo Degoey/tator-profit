@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { joinProgramSchema, registerSchema } from "../src/lib/validation";
+import { adminCreditSchema, joinProgramSchema, registerSchema } from "../src/lib/validation";
 
 const validRegistration = {
   name: "Budi Santoso",
@@ -92,5 +92,59 @@ describe("joinProgramSchema", () => {
 
     assert.equal(result.success, false);
     assert.equal(result.error?.issues[0]?.path[0], "tierId");
+  });
+});
+
+const validCredit = {
+  userId: "ca3e42d0-33d4-496a-95e2-4030c24e1a83",
+  amount: "100.00",
+  reason: "Saldo awal sesuai keputusan tim keuangan",
+  reference: "ADM-20261011-0001",
+};
+
+describe("adminCreditSchema", () => {
+  it("menerima kredit admin yang lengkap", () => {
+    const result = adminCreditSchema.safeParse(validCredit);
+
+    assert.equal(result.success, true);
+    assert.equal(result.data?.amount, "100.00");
+    assert.equal(result.data?.reference, "ADM-20261011-0001");
+  });
+
+  it("menolak jumlah nol, negatif, atau lebih dari dua desimal", () => {
+    for (const amount of ["0", "0.00", "-5.00", "10.001", "1e3"]) {
+      const result = adminCreditSchema.safeParse({ ...validCredit, amount });
+      assert.equal(result.success, false, `amount=${amount}`);
+      assert.ok(result.error?.issues.some((issue) => issue.path[0] === "amount"), `amount=${amount}`);
+    }
+  });
+
+  it("mewajibkan akun penerima berupa User ID yang valid", () => {
+    const result = adminCreditSchema.safeParse({ ...validCredit, userId: "demo_member" });
+
+    assert.equal(result.success, false);
+    assert.equal(result.error?.issues[0]?.path[0], "userId");
+  });
+
+  it("mewajibkan alasan yang bermakna", () => {
+    for (const reason of ["", "  ", "ab"]) {
+      const result = adminCreditSchema.safeParse({ ...validCredit, reason });
+      assert.equal(result.success, false, `reason=${JSON.stringify(reason)}`);
+      assert.ok(result.error?.issues.some((issue) => issue.path[0] === "reason"));
+    }
+  });
+
+  it("menolak nomor referensi yang tidak aman atau terlalu pendek", () => {
+    for (const reference of ["", "ab", "ADM 2026", "ADM/2026", "ADM#1", "a".repeat(65)]) {
+      const result = adminCreditSchema.safeParse({ ...validCredit, reference });
+      assert.equal(result.success, false, `reference=${JSON.stringify(reference)}`);
+      assert.ok(result.error?.issues.some((issue) => issue.path[0] === "reference"));
+    }
+  });
+
+  it("menerima referensi dengan titik dua dan tanda hubung", () => {
+    const result = adminCreditSchema.safeParse({ ...validCredit, reference: "FIN:2026-0001" });
+
+    assert.equal(result.success, true);
   });
 });

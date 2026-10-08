@@ -68,6 +68,10 @@ enum TransactionType {
   REFERRAL_REWARD
   WITHDRAWAL
   ADJUSTMENT
+  /// Explicit administrator balance credit (Tahap 3). Always appended together
+  /// with an `admin.credit_granted` audit row; declared last because PostgreSQL
+  /// appends new enum values at the end of the type.
+  ADMIN_CREDIT
 }
 
 enum TransactionStatus {

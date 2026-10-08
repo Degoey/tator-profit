@@ -89,7 +89,7 @@ export function TierSection({
                         className="flex items-center justify-between gap-3 text-xs text-white/70"
                       >
                         <span>
-                          {cycle.cycleWeeks} minggu Â· target {formatRate(cycle.targetCycleRewardRate)}
+                          {cycle.cycleWeeks} minggu · target {formatRate(cycle.targetCycleRewardRate)}
                         </span>
                         <span className="font-semibold text-white">
                           {formatMoney(

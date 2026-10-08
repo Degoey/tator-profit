@@ -1,0 +1,12 @@
+-- Bagian 6/7 — Tahap 3 (kredit saldo administrator).
+--
+-- Adds the explicit ADMIN_CREDIT ledger type used by the administrator balance
+-- credit action. Purely additive: existing ledger rows keep their type, no row is
+-- rewritten and nothing is dropped. The append-only trigger on "Transaction" is
+-- untouched, so corrections still have to be appended as new entries.
+--
+-- PostgreSQL appends new enum values at the end of the type, which is why the
+-- Prisma enum declares ADMIN_CREDIT last. The new value is deliberately not used
+-- in this migration: PostgreSQL only allows a freshly added enum value to be used
+-- after the transaction that added it has committed.
+ALTER TYPE "TransactionType" ADD VALUE IF NOT EXISTS 'ADMIN_CREDIT';

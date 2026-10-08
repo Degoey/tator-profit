@@ -2,6 +2,7 @@ import { ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
+import { AdminCreditForm, CreditPermissionNote } from "@/components/payments/admin-credit-form";
 import { AdminDepositReview } from "@/components/payments/admin-deposit-review";
 import { AdminWithdrawalReview } from "@/components/payments/admin-withdrawal-review";
 import { PaymentKpis, PaymentShell } from "@/components/payments/payment-shell";
@@ -9,6 +10,7 @@ import {
   DEPOSIT_REVIEW_ACTION_VALUES,
   WITHDRAWAL_REVIEW_ACTION_VALUES,
 } from "@/components/payments/review-actions";
+import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { canAdmin, canReviewDepositAction } from "@/lib/auth/admin-permissions";
@@ -27,9 +29,22 @@ const ADMIN_ROLE_LABELS: Record<string, string> = {
   VIEWER: "Pengamat",
 };
 
+/** Reads one string field out of a stored JSON payload without trusting its shape. */
+function metaString(metadata: unknown, key: string): string | null {
+  if (!metadata || typeof metadata !== "object") return null;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : null;
+}
+
 export default async function AdminPage() {
   const admin = await requireAdminCapability("read");
   const canReviewWithdrawal = canAdmin(admin.adminRole, "reviewWithdrawal");
+  /**
+   * Credit and audit are separate capabilities, decided here on the server: the
+   * UI only mirrors what this page is allowed to load and render.
+   */
+  const canCredit = canAdmin(admin.adminRole, "creditBalance");
+  const canReadAudit = canAdmin(admin.adminRole, "readAudit");
 
   /**
    * Capabilities are decided on the server, per action: FINANCE/SUPER_ADMIN may
@@ -45,7 +60,6 @@ export default async function AdminPage() {
 
   const [
     usersActive,
-    programsActive,
     membershipsPending,
     depositsPending,
     withdrawalsPending,
@@ -57,11 +71,8 @@ export default async function AdminPage() {
     completedWithdrawalSum,
     deposits,
     withdrawals,
-    auditRows,
-    requestAuditEntries,
   ] = await Promise.all([
     prisma.user.count({ where: { status: "ACTIVE" } }),
-    prisma.userProgram.count({ where: { status: "ACTIVE" } }),
     prisma.userProgram.count({ where: { status: "PENDING" } }),
     prisma.depositRequest.count({ where: { status: { in: ["PENDING", "UNDER_REVIEW"] } } }),
     prisma.withdrawalRequest.count({
@@ -91,24 +102,104 @@ export default async function AdminPage() {
         user: { select: { name: true, username: true, email: true, balance: true } },
       },
     }),
-    prisma.auditLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 50,
-      include: { actor: { select: { username: true, name: true } } },
-    }),
-    prisma.auditLog.findMany({
-      where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
-      orderBy: { createdAt: "desc" },
-      take: 1000,
-      select: {
-        id: true,
-        entityId: true,
-        action: true,
-        createdAt: true,
-        actor: { select: { username: true } },
-      },
-    }),
   ]);
+
+  /**
+   * The audit trail is limited to SUPER_ADMIN, FINANCE and COMPLIANCE: a role
+   * without `readAudit` never loads the rows, so nothing leaks through the server
+   * rendered payload either.
+   */
+  const auditRows = canReadAudit
+    ? await prisma.auditLog.findMany({
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: { actor: { select: { username: true, name: true } } },
+      })
+    : [];
+  const requestAuditEntries = canReadAudit
+    ? await prisma.auditLog.findMany({
+        where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
+        orderBy: { createdAt: "desc" },
+        take: 1000,
+        select: {
+          id: true,
+          entityId: true,
+          action: true,
+          createdAt: true,
+          actor: { select: { username: true } },
+        },
+      })
+    : [];
+
+  /**
+   * Remaining dashboard counters (Tahap 2). Every number below is a real
+   * database aggregate; the credit history is only loaded for a role that may
+   * credit balances.
+   */
+  const [
+    totalUsers,
+    programsActiveCount,
+    membershipsActive,
+    rewardsPaidSum,
+    commissionsPaidSum,
+    adminActivityRows,
+    creditsCount,
+    creditsSum,
+    adminCredits,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.program.count({ where: { status: "ACTIVE" } }),
+    prisma.userProgram.count({ where: { status: "ACTIVE" } }),
+    prisma.reward.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
+    prisma.referralCommission.aggregate({
+      where: { status: "PAID" },
+      _sum: { commissionAmount: true },
+    }),
+    // "Aktivitas admin 24 jam" dihitung oleh database (NOW() - 24 jam) sehingga
+    // komponen server tidak perlu memanggil fungsi waktu yang tidak murni.
+    prisma.$queryRaw<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count
+      FROM "AuditLog"
+      WHERE "actorUserId" IS NOT NULL
+        AND "createdAt" >= NOW() - INTERVAL '24 hours'
+    `,
+    prisma.transaction.count({ where: { type: "ADMIN_CREDIT" } }),
+    prisma.transaction.aggregate({ where: { type: "ADMIN_CREDIT" }, _sum: { amount: true } }),
+    canCredit
+      ? prisma.transaction.findMany({
+          where: { type: "ADMIN_CREDIT" },
+          orderBy: { createdAt: "desc" },
+          take: 100,
+          select: {
+            id: true,
+            amount: true,
+            currency: true,
+            balanceBefore: true,
+            balanceAfter: true,
+            createdAt: true,
+            metadata: true,
+            user: { select: { name: true, username: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const adminActivity = adminActivityRows[0]?.count ?? 0;
+
+  const creditRows = adminCredits.map((row) => ({
+    id: row.id,
+    reference: metaString(row.metadata, "externalReference") ?? "—",
+    amount: row.amount.toFixed(2),
+    currency: row.currency,
+    reason: metaString(row.metadata, "reason") ?? "—",
+    actorUsername: metaString(row.metadata, "actorUsername"),
+    targetName: row.user.name,
+    targetUsername: row.user.username,
+    balanceBefore: row.balanceBefore.toFixed(2),
+    balanceAfter: row.balanceAfter.toFixed(2),
+    creditedAt: row.createdAt,
+  }));
+
 
   /** Audit trail grouped by request id, so each review dialog can show its own history. */
   const requestAuditByEntityId = new Map<
@@ -150,15 +241,28 @@ export default async function AdminPage() {
         <Badge variant={canReviewWithdrawal ? "default" : "muted"}>
           {canReviewWithdrawal ? "Dapat meninjau penarikan" : "Penarikan hanya baca"}
         </Badge>
+        <CreditPermissionNote allowed={canCredit} />
+        <Badge variant={canReadAudit ? "default" : "muted"}>
+          {canReadAudit ? "Dapat membaca jejak audit" : "Jejak audit tidak tersedia"}
+        </Badge>
         <Badge variant="muted">@{admin.username}</Badge>
       </section>
 
       <PaymentKpis
         label="Indikator administrasi"
         items={[
+          { label: "Total pengguna", value: String(totalUsers) },
           { label: "Pengguna aktif", value: String(usersActive) },
-          { label: "Program aktif", value: String(programsActive) },
-          { label: "Keanggotaan menunggu", value: String(membershipsPending), tone: "gold" },
+          {
+            label: "Program aktif",
+            value: String(programsActiveCount),
+            hint: "Program berstatus aktif di database",
+          },
+          {
+            label: "Keanggotaan aktif",
+            value: String(membershipsActive),
+            hint: `${membershipsPending} keanggotaan menunggu konfirmasi dana`,
+          },
           {
             label: "Deposit menunggu tinjauan",
             value: String(depositsPending),
@@ -171,13 +275,15 @@ export default async function AdminPage() {
             tone: "gold",
             hint: "Menunggu, ditinjau, disetujui, atau diproses",
           },
-          { label: "Imbalan tercatat", value: String(rewardsTotal) },
-          { label: "Komisi rujukan", value: String(commissionsTotal) },
           {
-            label: "Ditandai / ditolak",
-            value: String(depositsFlagged + withdrawalsRejected),
-            tone: "danger",
-            hint: `${depositsFlagged} deposit ditandai · ${withdrawalsRejected} penarikan ditolak`,
+            label: "Imbalan tercatat",
+            value: String(rewardsTotal),
+            hint: `Dibayar ${formatMoney(rewardsPaidSum._sum.amount ?? 0)}`,
+          },
+          {
+            label: "Komisi rujukan",
+            value: String(commissionsTotal),
+            hint: `Dibayar ${formatMoney(commissionsPaidSum._sum.commissionAmount ?? 0)}`,
           },
         ]}
       />
@@ -198,6 +304,50 @@ export default async function AdminPage() {
         ]}
       />
 
+
+      <PaymentKpis
+        label="Kepatuhan dan aktivitas"
+        columns={3}
+        items={[
+          {
+            label: "Transaksi mencurigakan",
+            value: String(depositsFlagged + withdrawalsRejected),
+            tone: "danger",
+            hint: `${depositsFlagged} deposit ditandai · ${withdrawalsRejected} penarikan ditolak`,
+          },
+          {
+            label: "Aktivitas admin 24 jam",
+            value: String(adminActivity),
+            hint: "Catatan audit dengan aktor administrator",
+          },
+          {
+            label: "Kredit saldo admin",
+            value: formatMoney(creditsSum._sum.amount ?? 0),
+            tone: "gold",
+            hint: `${creditsCount} entri ledger ADMIN_CREDIT`,
+          },
+        ]}
+      />
+
+      <Card id="kredit">
+        <CardHeader>
+          <CardTitle>Kredit saldo administrator</CardTitle>
+          <CardDescription>
+            Kredit saldo yang eksplisit dan tercatat. Hanya SUPER_ADMIN dan FINANCE yang dapat memberi
+            kredit; setiap kredit menulis entri ledger ADMIN_CREDIT, jejak audit, dan notifikasi dalam
+            satu transaksi database. Nomor referensi berfungsi sebagai kunci idempotensi sehingga
+            kredit tidak pernah berulang.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AdminCreditForm
+            canCredit={canCredit}
+            adminUsername={admin.username}
+            currency="USDT"
+            rows={creditRows}
+          />
+        </CardContent>
+      </Card>
 
       <Card id="deposit">
         <CardHeader>
@@ -278,12 +428,14 @@ export default async function AdminPage() {
         <CardHeader>
           <CardTitle>Jejak audit</CardTitle>
           <CardDescription>
-            50 catatan audit terbaru dari database: aktor, aksi, entitas, alamat IP, dan snapshot
-            sebelum/sesudah.
+            {canReadAudit
+              ? "50 catatan audit terbaru dari database: aktor, aksi, entitas, alamat IP, dan snapshot sebelum/sesudah."
+              : "Jejak audit hanya tersedia untuk peran SUPER_ADMIN, FINANCE, dan COMPLIANCE."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <AdminAuditTrail
+          {canReadAudit ? (
+            <AdminAuditTrail
             rows={auditRows.map((row) => ({
               id: row.id,
               createdAt: row.createdAt,
@@ -297,7 +449,13 @@ export default async function AdminPage() {
               before: row.before,
               after: row.after,
             }))}
-          />
+            />
+          ) : (
+            <Alert variant="warning" title="Akses terbatas">
+              Peran Anda tidak diizinkan membaca jejak audit. Hubungi SUPER_ADMIN bila catatan ini
+              diperlukan untuk tugas Anda.
+            </Alert>
+          )}
         </CardContent>
       </Card>
     </PaymentShell>

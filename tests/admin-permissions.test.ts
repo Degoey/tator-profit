@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  ADMIN_ROLE_PERMISSIONS,
+  adminPermissionsOf,
   canAdmin,
   canReviewDepositAction,
   type AdminPermission,
@@ -19,11 +21,17 @@ describe("canAdmin", () => {
     }
   });
 
-  it("mengizinkan semua peran admin membaca antrean dan bukti", () => {
+  it("mengizinkan semua peran admin membaca antrean dan membatasi bukti privat", () => {
     for (const role of ALL_ROLES) {
       assert.equal(canAdmin(role, "read"), true, `role=${role}`);
+    }
+
+    // Bukti pembayaran adalah data privat: peran peninjau boleh membukanya,
+    // VIEWER hanya-baca tidak.
+    for (const role of ["SUPER_ADMIN", "FINANCE", "SUPPORT", "COMPLIANCE"] as const) {
       assert.equal(canAdmin(role, "readProof"), true, `role=${role}`);
     }
+    assert.equal(canAdmin("VIEWER", "readProof"), false);
   });
 
   it("hanya SUPER_ADMIN dan FINANCE yang boleh memindahkan uang", () => {
@@ -39,6 +47,61 @@ describe("canAdmin", () => {
       assert.equal(canAdmin(role, "reviewDeposit"), false, `role=${role}`);
       assert.equal(canAdmin(role, "reviewWithdrawal"), false, `role=${role}`);
       assert.equal(canAdmin(role, "manageFinance"), false, `role=${role}`);
+    }
+  });
+});
+
+describe("matriks izin admin eksplisit", () => {
+  it("memberi setiap peran daftar izin yang eksplisit tanpa duplikat", () => {
+    for (const role of ALL_ROLES) {
+      const permissions = ADMIN_ROLE_PERMISSIONS[role];
+      assert.ok(permissions.length > 0, `role=${role}`);
+      assert.equal(new Set(permissions).size, permissions.length, `duplikat pada ${role}`);
+    }
+  });
+
+  it("hanya SUPER_ADMIN dan FINANCE yang boleh memberi kredit saldo", () => {
+    const allowed = ALL_ROLES.filter((role) => canAdmin(role, "creditBalance"));
+
+    assert.deepEqual([...allowed].sort(), ["FINANCE", "SUPER_ADMIN"]);
+  });
+
+  it("membatasi jejak audit pada SUPER_ADMIN, FINANCE, dan COMPLIANCE", () => {
+    const allowed = ALL_ROLES.filter((role) => canAdmin(role, "readAudit"));
+
+    assert.deepEqual([...allowed].sort(), ["COMPLIANCE", "FINANCE", "SUPER_ADMIN"]);
+  });
+
+  it("membatasi perubahan peran administrator pada SUPER_ADMIN", () => {
+    const allowed = ALL_ROLES.filter((role) => canAdmin(role, "manageUsers"));
+
+    assert.deepEqual([...allowed], ["SUPER_ADMIN"]);
+  });
+
+  it("menjaga VIEWER tetap hanya-baca", () => {
+    assert.deepEqual([...adminPermissionsOf("VIEWER")], ["read"]);
+    for (const permission of [
+      "readAudit",
+      "reviewDeposit",
+      "reviewWithdrawal",
+      "manageFinance",
+      "creditBalance",
+      "manageUsers",
+    ] as AdminPermission[]) {
+      assert.equal(canAdmin("VIEWER", permission), false, `permission=${permission}`);
+    }
+  });
+
+  it("tidak memberi SUPPORT dan COMPLIANCE kemampuan memindahkan uang", () => {
+    for (const role of ["SUPPORT", "COMPLIANCE"] as const) {
+      assert.equal(canAdmin(role, "creditBalance"), false, `role=${role}`);
+      assert.equal(canAdmin(role, "manageFinance"), false, `role=${role}`);
+    }
+  });
+
+  it("memberi peran kosong daftar izin kosong (fail closed)", () => {
+    for (const role of [null, undefined]) {
+      assert.deepEqual([...adminPermissionsOf(role)], []);
     }
   });
 });

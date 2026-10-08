@@ -260,6 +260,62 @@ function decimal(value: Prisma.Decimal): string {
   return value.toFixed(2);
 }
 
+/** Indonesian member-facing notification copy for every review decision. */
+const DEPOSIT_NOTIFICATION_TITLES: Record<DepositAction, string> = {
+  UNDER_REVIEW: "Deposit sedang ditinjau",
+  APPROVED: "Deposit disetujui",
+  REJECTED: "Deposit ditolak",
+  FLAGGED: "Deposit ditandai untuk pemeriksaan",
+};
+
+const WITHDRAWAL_NOTIFICATION_TITLES: Record<WithdrawalAction, string> = {
+  UNDER_REVIEW: "Penarikan sedang ditinjau",
+  APPROVED: "Penarikan disetujui",
+  PROCESSING: "Penarikan sedang diproses",
+  COMPLETED: "Penarikan selesai",
+  REJECTED: "Penarikan ditolak",
+};
+
+function depositNotificationBody(
+  action: DepositAction,
+  amount: string,
+  currency: string,
+  reason?: string,
+): string {
+  const value = `${amount} ${currency}`;
+  switch (action) {
+    case "APPROVED":
+      return `Deposit ${value} disetujui dan keanggotaan program Anda sudah aktif.`;
+    case "REJECTED":
+      return `Deposit ${value} ditolak.${reason ? ` Alasan: ${reason}.` : ""}`;
+    case "FLAGGED":
+      return `Deposit ${value} ditandai untuk pemeriksaan lanjutan.${reason ? ` Catatan: ${reason}.` : ""}`;
+    default:
+      return `Deposit ${value} sedang ditinjau oleh tim kami.`;
+  }
+}
+
+function withdrawalNotificationBody(
+  action: WithdrawalAction,
+  amount: string,
+  currency: string,
+  reason?: string,
+): string {
+  const value = `${amount} ${currency}`;
+  switch (action) {
+    case "APPROVED":
+      return `Penarikan ${value} disetujui dan menunggu proses transfer manual.`;
+    case "PROCESSING":
+      return `Penarikan ${value} sedang diproses. Transfer dilakukan manual oleh tim keuangan.`;
+    case "COMPLETED":
+      return `Penarikan ${value} telah diselesaikan.`;
+    case "REJECTED":
+      return `Penarikan ${value} ditolak dan dananya dikembalikan ke saldo tersedia.${reason ? ` Alasan: ${reason}.` : ""}`;
+    default:
+      return `Penarikan ${value} sedang ditinjau oleh tim kami.`;
+  }
+}
+
 /** Converts a ledger balance guard into a user facing payment error. */
 function mapLedgerError(error: unknown): never {
   if (error instanceof LedgerError) {
@@ -558,6 +614,23 @@ export async function reviewDepositRequest(
         },
       });
 
+      // Member notification, written in the same transaction as the money move so
+      // a status change can never be visible without its notification.
+      await tx.notification.create({
+        data: {
+          userId: deposit.userId,
+          type: input.action === "APPROVED" ? "PROGRAM" : "SYSTEM",
+          title: DEPOSIT_NOTIFICATION_TITLES[input.action],
+          body: depositNotificationBody(input.action, decimal(updated.amount), updated.currency, input.reason),
+          metadata: {
+            depositId: updated.id,
+            status: updated.status,
+            ledgerReference,
+            membershipStatus,
+          },
+        },
+      });
+
       return {
         id: updated.id,
         status: updated.status,
@@ -847,6 +920,23 @@ export async function reviewWithdrawalRequest(
           },
           ipAddress: input.meta?.ipAddress ?? null,
           userAgent: input.meta?.userAgent ?? null,
+        },
+      });
+
+      // The member is told about every status change in the same transaction that
+      // produced it; nothing is announced that did not commit.
+      await tx.notification.create({
+        data: {
+          userId: withdrawal.userId,
+          type: "SYSTEM",
+          title: WITHDRAWAL_NOTIFICATION_TITLES[input.action],
+          body: withdrawalNotificationBody(input.action, decimal(updated.amount), updated.currency, input.reason),
+          metadata: {
+            withdrawalId: updated.id,
+            status: updated.status,
+            released,
+            settled,
+          },
         },
       });
 

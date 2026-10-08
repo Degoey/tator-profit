@@ -234,12 +234,14 @@ async function main() {
     support,
     memberId,
     adminId,
+    supportId,
     userProgramId,
     joinAmount,
   };
 
   await verifyDepositFlow(context);
   await verifyWithdrawalFlow(context);
+  await verifyAdminCreditFlow(context);
 
   const failed = results.filter((entry) => !entry.ok);
   console.log(
@@ -256,6 +258,7 @@ interface FlowContext {
   support: Session;
   memberId: string;
   adminId: string;
+  supportId: string;
   userProgramId: string;
   joinAmount: string;
 }
@@ -588,6 +591,146 @@ async function verifyWithdrawalFlow(context: FlowContext) {
     "setiap perubahan status penarikan tercatat di jejak audit",
     auditRows >= 4,
     `baris=${auditRows}`,
+  );
+}
+
+/**
+ * Administrator balance credit (Tahap 3) through the real HTTP surface: the role
+ * is checked server-side, the reference is idempotent, and the ledger, audit trail
+ * and balance must all agree afterwards.
+ */
+async function verifyAdminCreditFlow(context: FlowContext) {
+  const { support, admin, memberId, supportId } = context;
+  const reference = `VERIFY-${stamp}-CREDIT`;
+
+  const crossSite = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "10.00", reason: "uji lintas situs", reference },
+    origin: "https://penyerang.example",
+  });
+  check(
+    "kredit lintas situs ditolak",
+    crossSite.status === 403,
+    `status=${crossSite.status} kode=${crossSite.body?.code ?? "-"}`,
+  );
+
+  const supportDenied = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "10.00", reason: "uji RBAC", reference: `${reference}-RBAC` },
+  });
+  check(
+    "admin SUPPORT tidak boleh memberi kredit saldo (RBAC server-side)",
+    supportDenied.status === 403,
+    `status=${supportDenied.status} kode=${supportDenied.body?.code ?? "-"}`,
+  );
+
+  // Menaikkan peran di database langsung mengubah kemampuan sesi yang sama:
+  // otorisasi dibaca ulang dari database, bukan dari muatan permintaan.
+  await prisma.user.update({ where: { id: supportId }, data: { adminRole: "FINANCE" } });
+
+  const before = await balanceOf(memberId);
+  const granted = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "100.00", reason: "Saldo awal verifikasi", reference },
+  });
+  check(
+    "admin FINANCE memberi kredit 100,00 USDT",
+    granted.status === 201 &&
+      granted.body?.data?.amount === "100.00" &&
+      granted.body?.data?.currency === "USDT" &&
+      granted.body?.data?.idempotent === false,
+    `status=${granted.status} kode=${granted.body?.code ?? "-"} saldo=${granted.body?.data?.balanceBefore}->${granted.body?.data?.balanceAfter}`,
+  );
+
+  const replay = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "100.00", reason: "Saldo awal verifikasi", reference },
+  });
+  check(
+    "referensi yang sama tidak mengkredit dua kali",
+    replay.status === 200 && replay.body?.data?.idempotent === true,
+    `status=${replay.status} idempotent=${replay.body?.data?.idempotent}`,
+  );
+
+  const conflict = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "250.00", reason: "jumlah berbeda", reference },
+  });
+  check(
+    "referensi yang sama dengan jumlah berbeda ditolak",
+    conflict.status === 409 && conflict.body?.code === "REFERENCE_CONFLICT",
+    `status=${conflict.status} kode=${conflict.body?.code ?? "-"}`,
+  );
+
+  const invalidAmount = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "0", reason: "jumlah nol", reference: `${reference}-ZERO` },
+  });
+  check(
+    "jumlah nol ditolak dengan 422",
+    invalidAmount.status === 422,
+    `status=${invalidAmount.status} kode=${invalidAmount.body?.code ?? "-"}`,
+  );
+
+  await prisma.user.update({ where: { id: supportId }, data: { adminRole: "VIEWER" } });
+  const viewerDenied = await support.request("/api/admin/credits", {
+    body: { userId: memberId, amount: "10.00", reason: "uji VIEWER", reference: `${reference}-VIEWER` },
+  });
+  check(
+    "admin VIEWER tidak boleh memberi kredit saldo",
+    viewerDenied.status === 403,
+    `status=${viewerDenied.status} kode=${viewerDenied.body?.code ?? "-"}`,
+  );
+
+  const after = await balanceOf(memberId);
+  const expectedAvailable = (Number(before.available) + 100).toFixed(2);
+  check(
+    "saldo tersedia bertambah tepat 100,00 USDT",
+    after.available === expectedAvailable,
+    `${before.available} -> ${after.available} (harapan ${expectedAvailable})`,
+  );
+
+  const [entries, audit, notification, invariant] = await Promise.all([
+    prisma.transaction.count({
+      where: { userId: memberId, type: "ADMIN_CREDIT", reference: `admin-credit:${reference}` },
+    }),
+    prisma.auditLog.findFirst({
+      where: { action: "admin.credit_granted", actorUserId: supportId },
+      orderBy: { createdAt: "desc" },
+      select: { before: true, after: true, ipAddress: true },
+    }),
+    prisma.notification.count({ where: { userId: memberId, title: "Kredit saldo diterima" } }),
+    verifyBalanceInvariant(prisma, memberId),
+  ]);
+
+  check(
+    "ledger berisi tepat satu entri ADMIN_CREDIT",
+    entries === 1,
+    `baris=${entries}`,
+  );
+  check(
+    "jejak audit kredit menyimpan saldo sebelum dan sesudah",
+    audit !== null &&
+      (audit.after as { reference?: string } | null)?.reference === reference &&
+      typeof (audit.before as { balance?: string } | null)?.balance === "string",
+    `before=${JSON.stringify(audit?.before)} after=${JSON.stringify(audit?.after)}`,
+  );
+  check("penerima mendapat notifikasi kredit", notification >= 1, `baris=${notification}`);
+  check(
+    "buku besar dan saldo seimbang setelah kredit admin",
+    invariant.ok,
+    JSON.stringify(invariant.checks),
+  );
+
+  // Administrator SUPER_ADMIN juga boleh memberi kredit.
+  const beforeSuper = await balanceOf(memberId);
+  const superGrant = await admin.request("/api/admin/credits", {
+    body: {
+      userId: memberId,
+      amount: "25.00",
+      reason: "Kredit tambahan SUPER_ADMIN",
+      reference: `${reference}-SUPER`,
+    },
+  });
+  const expectedSuper = (Number(beforeSuper.available) + 25).toFixed(2);
+  check(
+    "admin SUPER_ADMIN dapat memberi kredit",
+    superGrant.status === 201 && superGrant.body?.data?.balanceAfter === expectedSuper,
+    `status=${superGrant.status} kode=${superGrant.body?.code ?? "-"} saldo=${superGrant.body?.data?.balanceAfter} harapan=${expectedSuper}`,
   );
 }
 

@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type AdminRole } from "@prisma/client";
 
 import { hashPassword } from "../src/lib/auth/password";
 
@@ -9,9 +9,11 @@ import { hashPassword } from "../src/lib/auth/password";
  *
  * It registers two accounts through the real HTTP API (so profiles, referral
  * codes, balances, notifications and audit logs are created exactly like a real
- * signup), promotes one of them to ADMIN, has the member join the USDT 100 tier
- * and lets the admin confirm the funds. The result is a dashboard with real
- * numbers instead of an empty state.
+ * signup), promotes one of them to ADMIN *with an explicit admin role* (`role`
+ * alone is not enough: the platform fails closed and refuses `/admin` without an
+ * `adminRole`), has the member join the USDT 100 tier and lets the admin confirm
+ * the funds. The result is a dashboard with real numbers instead of an empty
+ * state.
  *
  * The script is idempotent: re-running it resets the demo passwords, reuses the
  * existing membership and never creates a duplicate reward period.
@@ -28,6 +30,8 @@ interface DemoAccount {
   phone: string;
   ip: string;
   role: "USER" | "ADMIN";
+  /** Explicit administrator capability. Members carry none; fail-closed by design. */
+  adminRole: AdminRole | null;
 }
 
 const MEMBER_ACCOUNT: DemoAccount = {
@@ -37,6 +41,7 @@ const MEMBER_ACCOUNT: DemoAccount = {
   phone: "+628110000001",
   ip: "203.0.113.10",
   role: "USER",
+  adminRole: null,
 };
 
 const ADMIN_ACCOUNT: DemoAccount = {
@@ -46,6 +51,9 @@ const ADMIN_ACCOUNT: DemoAccount = {
   phone: "+628110000002",
   ip: "203.0.113.11",
   role: "ADMIN",
+  // Without an explicit admin role the admin guard refuses `/admin` and every
+  // `/api/admin/*` route, so the demo admin would be locked out of its own demo.
+  adminRole: "SUPER_ADMIN",
 };
 
 /** Target tier for the demo membership (USDT 100 -> 10,00 USDT target reward weekly). */
@@ -71,11 +79,17 @@ function cookieJar(ip: string) {
 
 type Jar = ReturnType<typeof cookieJar>;
 
+/**
+ * Every mutating route enforces `assertSameOrigin`, which rejects a request
+ * without an `Origin` header. A browser always sends one, but `fetch` from Node
+ * does not, so the script would get a 403 on register/login/join/activate. The
+ * header is therefore set explicitly to the origin the script talks to.
+ */
 async function request(
   path: string,
   options: { method?: string; body?: unknown; jar?: Jar } = {},
 ): Promise<{ status: number; body: Record<string, unknown> }> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+  const headers: Record<string, string> = { Accept: "application/json", Origin: BASE_URL };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
   if (options.jar) {
     headers.Cookie = options.jar.header();
@@ -137,12 +151,19 @@ async function ensureAccount(account: DemoAccount): Promise<Jar> {
 
   const row = await prisma.user.findUniqueOrThrow({
     where: { username: account.username },
-    select: { id: true, role: true },
+    select: { id: true, role: true, adminRole: true },
   });
 
-  if (row.role !== account.role) {
-    await prisma.user.update({ where: { id: row.id }, data: { role: account.role } });
-    console.log(`  peran ${account.username} -> ${account.role}`);
+  // `role` alone is not enough: an ADMIN without an explicit `adminRole` is
+  // refused by the admin guard, so both fields are kept in sync here.
+  if (row.role !== account.role || row.adminRole !== account.adminRole) {
+    await prisma.user.update({
+      where: { id: row.id },
+      data: { role: account.role, adminRole: account.adminRole },
+    });
+    console.log(
+      `  peran ${account.username} -> ${account.role}${account.adminRole ? ` (${account.adminRole})` : ""}`,
+    );
   }
 
   const jar = cookieJar(account.ip);

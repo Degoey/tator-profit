@@ -46,6 +46,9 @@ export function SiteFooter() {
           <Link href="/withdrawal-policy" className="transition-colors hover:text-white">
             Kebijakan Penarikan
           </Link>
+          <Link href="/referral-terms" className="transition-colors hover:text-white">
+            Ketentuan Rujukan
+          </Link>
         </nav>
       </div>
     </footer>

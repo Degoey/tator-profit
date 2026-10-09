@@ -3,8 +3,10 @@ import type { ReactNode } from "react";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
+  Coins,
   LayoutDashboard,
   Layers,
+  Receipt,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
@@ -13,7 +15,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { cn } from "@/lib/utils";
 
-export type PaymentSection = "/deposit" | "/withdrawal" | "/admin";
+export type PaymentSection = "/deposit" | "/withdrawal" | "/admin" | "/rewards" | "/transactions";
 
 export interface PaymentShellProps {
   active: PaymentSection;
@@ -37,7 +39,9 @@ export function PaymentShell({
   const links: { href: string; label: string; icon: typeof Wallet }[] = [
     { href: "/dashboard", label: "Dasbor", icon: LayoutDashboard },
     { href: "/programs", label: "Program", icon: Layers },
-    { href: "/deposit", label: "Deposit", icon: ArrowDownToLine },
+    { href: "/rewards", label: "Imbalan", icon: Coins },
+    { href: "/transactions", label: "Transaksi", icon: Receipt },
+    { href: "/deposit", label: "Setor Dana", icon: ArrowDownToLine },
     { href: "/withdrawal", label: "Penarikan", icon: ArrowUpFromLine },
   ];
 

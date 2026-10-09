@@ -168,6 +168,16 @@ export const adminRoleAssignmentSchema = z.object({
 export type AdminRoleAssignmentInput = z.infer<typeof adminRoleAssignmentSchema>;
 
 /**
+ * Marks notifications as read. Only the signed-in user's own rows can ever be
+ * touched because the route scopes the update by session user id.
+ */
+export const notificationReadSchema = z.object({
+  id: z.string().uuid("Notifikasi tidak valid.").optional(),
+});
+
+export type NotificationReadInput = z.infer<typeof notificationReadSchema>;
+
+/**
  * Administrator balance credit (Tahap 3). The reference is the idempotency key:
  * submitting the same reference twice must not credit the account twice.
  */

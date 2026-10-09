@@ -12,9 +12,18 @@ export interface RequestMeta {
 export async function getRequestMeta(): Promise<RequestMeta> {
   try {
     const headerList = await headers();
-    const forwardedFor = headerList.get("x-forwarded-for");
-    const ipAddress =
-      forwardedFor?.split(",")[0]?.trim() ?? headerList.get("x-real-ip") ?? null;
+    /**
+     * `X-Forwarded-For` is client controlled, so it is only honoured when the
+     * operator explicitly declares that a trusted reverse proxy overwrites it
+     * (`TRUST_PROXY_HEADERS=1`). Without that declaration the header is ignored,
+     * which keeps rate limits and the audit trail from being forged by a caller.
+     */
+    const trustProxyHeaders = process.env.TRUST_PROXY_HEADERS === "1";
+    const forwardedFor = trustProxyHeaders ? headerList.get("x-forwarded-for") : null;
+    const platformIp = trustProxyHeaders
+      ? forwardedFor?.split(",")[0]?.trim() || headerList.get("x-real-ip")
+      : headerList.get("x-real-ip");
+    const ipAddress = platformIp?.trim() || null;
     return { ipAddress, userAgent: headerList.get("user-agent") };
   } catch {
     return { ipAddress: null, userAgent: null };

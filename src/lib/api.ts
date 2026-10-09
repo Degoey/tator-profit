@@ -26,9 +26,16 @@ export function jsonError(
 }
 
 /** Reads a JSON body defensively; returns `null` when the payload is not valid JSON. */
+const MAX_JSON_BODY_BYTES = 64 * 1024;
+
 export async function readJsonBody(request: Request): Promise<unknown | null> {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_JSON_BODY_BYTES) return null;
+
   try {
-    return await request.json();
+    const raw = await request.text();
+    if (new TextEncoder().encode(raw).byteLength > MAX_JSON_BODY_BYTES) return null;
+    return JSON.parse(raw) as unknown;
   } catch {
     return null;
   }

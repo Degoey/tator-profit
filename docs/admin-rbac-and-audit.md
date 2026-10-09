@@ -97,7 +97,24 @@ dan statusnya jujur (tidak ada klaim transfer selesai tanpa verifikasi).
   dapat diubah saat runtime, sehingga tidak ada mutasi tarif yang perlu diaudit.
 - Kata sandi, token, dan kredensial tidak pernah dicatat di audit maupun log.
 
-## 6. Cara memverifikasi ulang
+## 6. Antarmuka peran administrator (Bagian 7/7)
+
+Kemampuan `manageUsers` kini memiliki permukaan di UI: kartu **Peran administrator**
+pada `/admin`. Kartu itu hanya dimuat untuk SUPER_ADMIN — daftar administrator tidak
+pernah dibaca untuk peran lain, jadi tidak ada kebocoran lewat payload yang dirender.
+Setiap perubahan peran tetap divalidasi ulang di dalam service (`assignAdminRole`),
+sehingga akun FINANCE/SUPPORT/COMPLIANCE/VIEWER tidak dapat memakainya walaupun
+mengirim permintaan langsung ke `/api/admin/users/role`.
+
+## 7. Halaman akun dan kebijakan (Bagian 7/7)
+
+Selain halaman keuangan, sekarang tersedia: `/rewards` (riwayat imbalan + progres
+periode), `/transactions` (buku besar penuh), `/profile` (perbarui profil),
+`/security` (sesi aktif, peristiwa keamanan, status 2FA yang jujur: belum tersedia),
+`/notifications` (kotak masuk + tandai dibaca), `/reset-password` (menyelesaikan alur
+lupa kata sandi), dan `/referral-terms` (Ketentuan Rujukan).
+
+## 8. Cara memverifikasi ulang
 
 ```powershell
 npx tsc --noEmit          # tipe
@@ -108,4 +125,13 @@ npm run dev               # terminal lain, lalu:
 npm run verify:payments   # alur setoran/penarikan/kredit lewat HTTP + cek DB
 npm run verify:e2e        # alur pengguna end-to-end
 ```
+
+Dua pengalih lingkungan hanya untuk pengembangan lokal (jangan dipakai di produksi):
+
+- `TRUST_PROXY_HEADERS=1` — mempercayai `X-Forwarded-For`. Wajib untuk menjalankan
+  skrip verifikasi yang mensimulasikan beberapa alamat klien, dan hanya benar bila ada
+  reverse proxy tepercaya yang menimpa header tersebut.
+- `ALLOW_DEV_RESET_TOKEN=1` — mengembalikan token reset dari API agar alur lupa kata
+  sandi dapat diuji tanpa penyedia surel. Di produksi token tidak pernah dikembalikan.
+
 

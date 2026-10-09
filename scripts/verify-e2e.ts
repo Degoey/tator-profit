@@ -873,28 +873,56 @@ async function main() {
 
 
 
-  // Proves the per-IP limiter engages. The limiter is an in-process 5 minute window,
-  // so the probe uses a fresh random client IP to stay repeatable.
-  let throttleStatuses: number[] = [];
-  for (let round = 0; round < 4 && throttleStatuses.at(0) !== 401; round += 1) {
-    const ip = `198.51.100.${1 + Math.floor(Math.random() * 250)}`;
+  /**
+   * Proves both login limiters engage. Each is an in-process 5 minute window, so
+   * every probe uses fresh random values to stay repeatable:
+   *  - per-IP window: 12 failures are answered, the 13th from the same address is blocked;
+   *    the identifier is rotated so only the address bucket can fill up.
+   *  - per-account window: 10 failures are answered, the 11th for the same identifier is
+   *    blocked even when the client address changes (the header cannot be spoofed into
+   *    bypassing this limit).
+   */
+  function randomProbeIp(): string {
+    return `198.51.100.${1 + Math.floor(Math.random() * 250)}`;
+  }
+
+  let perIpStatuses: number[] = [];
+  for (let round = 0; round < 4 && perIpStatuses.at(0) !== 401; round += 1) {
+    const ip = randomProbeIp();
     const statuses: number[] = [];
     for (let attempt = 1; attempt <= 13; attempt += 1) {
       const response = await request("/api/auth/login", {
         method: "POST",
         ip,
-        body: { identifier: `nobody_${stamp}`, password: "WrongPassword1" },
+        body: { identifier: `nobody_ip_${stamp}_${round}_${attempt}`, password: "WrongPassword1" },
       });
       statuses.push(response.status);
     }
-    throttleStatuses = statuses;
+    perIpStatuses = statuses;
   }
   check(
     "pembatasan laju per-IP memblokir percobaan masuk yang gagal berulang",
-    throttleStatuses.at(0) === 401 &&
-      throttleStatuses.slice(0, 12).every((status) => status === 401) &&
-      throttleStatuses.at(12) === 429,
-    throttleStatuses.join(","),
+    perIpStatuses.at(0) === 401 &&
+      perIpStatuses.slice(0, 12).every((status) => status === 401) &&
+      perIpStatuses.at(12) === 429,
+    perIpStatuses.join(","),
+  );
+
+  const accountIdentifier = `nobody_acct_${stamp}`;
+  const perAccountStatuses: number[] = [];
+  for (let attempt = 1; attempt <= 11; attempt += 1) {
+    const response = await request("/api/auth/login", {
+      method: "POST",
+      ip: randomProbeIp(),
+      body: { identifier: accountIdentifier, password: "WrongPassword1" },
+    });
+    perAccountStatuses.push(response.status);
+  }
+  check(
+    "pembatasan laju per-akun memblokir percobaan masuk walau alamat klien berubah",
+    perAccountStatuses.slice(0, 10).every((status) => status === 401) &&
+      perAccountStatuses.at(10) === 429,
+    perAccountStatuses.join(","),
   );
 
   const chainRows = await prisma.user.findMany({

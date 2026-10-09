@@ -1,4 +1,5 @@
 import { jsonError, jsonSuccess, readJsonBody } from "@/lib/api";
+import { assertSameOrigin } from "@/lib/request-origin";
 import { getCurrentUser } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/prisma";
 import { getRequestMeta, recordAuditLog } from "@/lib/security";
@@ -21,6 +22,7 @@ export async function GET() {
 
 /** Updates the mutable parts of the profile (name, phone, country, city, timezone, bio). */
 export async function PATCH(request: Request) {
+  if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
   const user = await getCurrentUser();
   if (!user) {
     return jsonError("UNAUTHENTICATED", "Silakan masuk untuk memperbarui profil Anda.", 401);

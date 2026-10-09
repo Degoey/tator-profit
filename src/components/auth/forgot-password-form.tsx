@@ -1,6 +1,7 @@
 "use client";
 
 import { KeyRound, Loader2, MailCheck } from "lucide-react";
+import Link from "next/link";
 import * as React from "react";
 
 import { FormField } from "@/components/auth/form-field";
@@ -89,17 +90,36 @@ export function ForgotPasswordForm() {
         <Alert variant="info" title="Mode pengembangan: token atur ulang">
           <p className="break-all font-mono text-xs">{devToken}</p>
           <p className="mt-2 text-xs opacity-80">
-            Gunakan token ini pada alamat API{" "}
-            <span className="font-mono">/api/auth/reset-password</span> untuk menyelesaikan atur
-            ulang. Pada mode produksi token dikirim via surel dan tidak ditampilkan.
+            Token ini hanya muncul karena pengalih pengembangan lokal
+            (<span className="font-mono">ALLOW_DEV_RESET_TOKEN=1</span>) aktif. Di produksi token
+            dikirim melalui surel dan tidak pernah dikembalikan oleh API.
+          </p>
+          <p className="mt-2 text-xs">
+            <Link
+              href={`/reset-password?token=${encodeURIComponent(devToken)}`}
+              className="font-semibold text-[var(--color-neon)] underline-offset-4 hover:underline"
+            >
+              Lanjutkan ke halaman atur ulang
+            </Link>
           </p>
         </Alert>
       ) : null}
 
-      <p className="flex items-center gap-2 text-xs text-white/45">
+      <p className="flex items-center gap-2 text-xs text-white/60">
         <KeyRound className="size-3.5" aria-hidden />
         Struktur atur ulang kata sandi sudah tersedia: token disimpan sebagai hash, sekali pakai, dan
         berlaku 60 menit.
+      </p>
+
+      <p className="text-xs text-white/60">
+        Sudah punya token?{" "}
+        <Link
+          href="/reset-password"
+          className="text-[var(--color-neon)] underline-offset-4 hover:underline"
+        >
+          Buka halaman atur ulang kata sandi
+        </Link>
+        .
       </p>
     </form>
   );

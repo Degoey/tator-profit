@@ -4,6 +4,7 @@ interface Bucket {
 }
 
 const buckets = new Map<string, Bucket>();
+const MAX_BUCKETS = 10_000;
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -20,6 +21,10 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   const bucket = buckets.get(key);
 
   if (!bucket || bucket.resetAt <= now) {
+    if (buckets.size >= MAX_BUCKETS) pruneRateLimitBuckets();
+    if (buckets.size >= MAX_BUCKETS) {
+      return { allowed: false, remaining: 0, retryAfterSeconds: 60 };
+    }
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     return { allowed: true, remaining: limit - 1, retryAfterSeconds: 0 };
   }

@@ -31,9 +31,16 @@ export interface AlertProps extends React.HTMLAttributes<HTMLDivElement> {
 
 export function Alert({ className, variant = "info", title, children, ...props }: AlertProps) {
   const style = styles[variant];
+  /**
+   * Only errors interrupt a screen reader. Informational, success and warning
+   * alerts are static page content, so they are announced politely instead of
+   * being forced to the front of the queue on every page load.
+   */
+  const isAssertive = variant === "danger";
   return (
     <div
-      role="alert"
+      role={isAssertive ? "alert" : "status"}
+      aria-live={isAssertive ? "assertive" : "polite"}
       className={cn("flex gap-3 rounded-xl border p-3.5 text-sm", style.wrapper, className)}
       {...props}
     >

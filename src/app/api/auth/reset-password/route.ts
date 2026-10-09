@@ -1,4 +1,5 @@
 import { jsonError, jsonSuccess, readJsonBody } from "@/lib/api";
+import { assertSameOrigin } from "@/lib/request-origin";
 import { pruneRateLimitBuckets, rateLimit } from "@/lib/rate-limit";
 import { getRequestMeta, recordSecurityEvent } from "@/lib/security";
 import { AuthError, resetPasswordWithToken } from "@/lib/services/auth-service";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
   const meta = await getRequestMeta();
 
   pruneRateLimitBuckets();

@@ -1,4 +1,5 @@
 import { jsonError, jsonSuccess, readJsonBody } from "@/lib/api";
+import { assertSameOrigin } from "@/lib/request-origin";
 import { createSession } from "@/lib/auth/session";
 import { pruneRateLimitBuckets, rateLimit } from "@/lib/rate-limit";
 import { getRequestMeta, recordSecurityEvent } from "@/lib/security";
@@ -9,6 +10,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
   const meta = await getRequestMeta();
 
   pruneRateLimitBuckets();
@@ -36,6 +38,27 @@ export async function POST(request: Request) {
       "Periksa kembali kolom yang ditandai.",
       422,
       flattenZodError(parsed.error),
+    );
+  }
+
+  /**
+   * Second limiter keyed on the submitted identifier. It cannot be spoofed with a
+   * header, so a caller that rotates the client address still cannot brute force a
+   * single account, and the account itself is protected from credential stuffing.
+   */
+  const identifierKey = parsed.data.identifier.trim().toLowerCase().slice(0, 190);
+  const identifierLimit = rateLimit(`login-id:${identifierKey}`, 10, 5 * 60 * 1000);
+  if (!identifierLimit.allowed) {
+    await recordSecurityEvent({
+      type: "RATE_LIMITED",
+      severity: "WARNING",
+      description: "Batas percobaan login per akun terlampaui",
+      meta,
+    });
+    return jsonError(
+      "RATE_LIMITED",
+      `Terlalu banyak percobaan masuk. Coba lagi dalam ${identifierLimit.retryAfterSeconds} detik.`,
+      429,
     );
   }
 

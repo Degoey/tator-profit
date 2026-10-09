@@ -1,4 +1,5 @@
 import { jsonError, jsonSuccess, readJsonBody } from "@/lib/api";
+import { assertSameOrigin } from "@/lib/request-origin";
 import { pruneRateLimitBuckets, rateLimit } from "@/lib/rate-limit";
 import { getRequestMeta, recordSecurityEvent } from "@/lib/security";
 import { requestPasswordReset } from "@/lib/services/auth-service";
@@ -8,6 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
+  if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
   const meta = await getRequestMeta();
 
   pruneRateLimitBuckets();
@@ -42,6 +44,7 @@ export async function POST(request: Request) {
     const result = await requestPasswordReset(parsed.data.email, meta);
     return jsonSuccess({
       requested: result.requested,
+      // Present only when the local development switch is explicitly enabled.
       devToken: result.devToken,
       expiresAt: result.expiresAt?.toISOString(),
     });

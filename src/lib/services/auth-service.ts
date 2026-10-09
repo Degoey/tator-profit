@@ -287,7 +287,11 @@ export async function authenticateUser(
 
 export interface PasswordResetRequestResult {
   requested: boolean;
-  /** Only exposed outside production so the flow can be completed end to end. */
+  /**
+   * Only populated when the operator explicitly enables the local development
+   * switch (`ALLOW_DEV_RESET_TOKEN=1`, never allowed in production). Reset tokens
+   * are otherwise delivered out of band and are never returned by the API.
+   */
   devToken?: string;
   expiresAt?: Date;
 }
@@ -338,7 +342,14 @@ export async function requestPasswordReset(
     meta,
   });
 
-  const exposeToken = process.env.NODE_ENV !== "production";
+  /**
+   * A reset token is a credential: it is never returned by default. The only
+   * exception is an explicit, local-development opt-in that is impossible in
+   * production, so the reset flow can still be verified without a mail provider.
+   */
+  const exposeToken =
+    process.env.ALLOW_DEV_RESET_TOKEN === "1" && process.env.NODE_ENV !== "production";
+
   return {
     requested: true,
     devToken: exposeToken ? token : undefined,

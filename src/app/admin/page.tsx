@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
 import { AdminCreditForm, CreditPermissionNote } from "@/components/payments/admin-credit-form";
 import { AdminDepositReview } from "@/components/payments/admin-deposit-review";
+import { AdminRoleManager } from "@/components/payments/admin-role-manager";
 import { AdminWithdrawalReview } from "@/components/payments/admin-withdrawal-review";
 import { PaymentKpis, PaymentShell } from "@/components/payments/payment-shell";
 import {
@@ -17,6 +18,7 @@ import { canAdmin, canReviewDepositAction } from "@/lib/auth/admin-permissions";
 import { requireAdminCapability } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { listAdministrators } from "@/lib/services/admin-role-service";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Administrasi" };
@@ -45,6 +47,8 @@ export default async function AdminPage() {
    */
   const canCredit = canAdmin(admin.adminRole, "creditBalance");
   const canReadAudit = canAdmin(admin.adminRole, "readAudit");
+  /** Role administration is SUPER_ADMIN only; other roles never load the list. */
+  const canManageUsers = canAdmin(admin.adminRole, "manageUsers");
 
   /**
    * Capabilities are decided on the server, per action: FINANCE/SUPER_ADMIN may
@@ -116,6 +120,13 @@ export default async function AdminPage() {
         include: { actor: { select: { username: true, name: true } } },
       })
     : [];
+
+  /**
+   * Administrator accounts are only loaded for a SUPER_ADMIN; every other role
+   * receives an empty list, so the capability cannot be exercised through the UI
+   * and the rows never reach the server rendered payload.
+   */
+  const administrators = canManageUsers ? await listAdministrators() : [];
   const requestAuditEntries = canReadAudit
     ? await prisma.auditLog.findMany({
         where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
@@ -458,6 +469,19 @@ export default async function AdminPage() {
           )}
         </CardContent>
       </Card>
+      {canManageUsers ? (
+        <AdminRoleManager
+          administrators={administrators.map((row) => ({
+            id: row.id,
+            username: row.username,
+            name: row.name,
+            email: row.email,
+            status: row.status,
+            adminRole: row.adminRole,
+            createdAt: row.createdAt,
+          }))}
+        />
+      ) : null}
     </PaymentShell>
   );
 }

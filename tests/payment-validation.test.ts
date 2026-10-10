@@ -95,6 +95,32 @@ describe("withdrawalSchema", () => {
     assert.equal(result.success, false);
     assert.ok(result.error?.issues.some((issue) => issue.path[0] === "notes"));
   });
+
+  it("mengabaikan biaya/netto yang dikirim browser (server yang menghitung)", () => {
+    const result = withdrawalSchema.safeParse({
+      ...valid,
+      fee: "0.01",
+      netAmount: "999999.00",
+    });
+    assert.equal(result.success, true);
+    // The schema strips the injected money fields: only the gross survives.
+    assert.equal("fee" in (result.data ?? {}), false);
+    assert.equal("netAmount" in (result.data ?? {}), false);
+    assert.equal(result.data?.amount, "120.50");
+  });
+
+  it("menerima kunci idempotensi berbentuk UUID dan menolak yang tidak valid", () => {
+    const withKey = withdrawalSchema.safeParse({
+      ...valid,
+      idempotencyKey: "123e4567-e89b-12d3-a456-426614174000",
+    });
+    assert.equal(withKey.success, true);
+    assert.equal(withKey.data?.idempotencyKey, "123e4567-e89b-12d3-a456-426614174000");
+
+    const badKey = withdrawalSchema.safeParse({ ...valid, idempotencyKey: "not-a-uuid" });
+    assert.equal(badKey.success, false);
+    assert.ok(badKey.error?.issues.some((issue) => issue.path[0] === "idempotencyKey"));
+  });
 });
 
 describe("adminDepositActionSchema", () => {

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
 import { Prisma, PrismaClient, type AdminRole } from "@prisma/client";
@@ -11,6 +12,8 @@ import {
   createWithdrawalRequest,
   getAdminDashboardMetrics,
   listAuditTrail,
+  listWithdrawalsForAdmin,
+  listWithdrawalsForUser,
   reviewDepositRequest,
   reviewWithdrawalRequest,
 } from "../src/lib/services/manual-payment-service";
@@ -411,6 +414,10 @@ test("penarikan memesan saldo dan hanya mendebit cadangan permanen saat selesai"
 
   assert.equal(withdrawal.status, "PENDING");
   assert.ok(withdrawal.reservedReference);
+  // Gross 200 -> fee 10% = 20, net payable = 180. The reserved amount is the gross.
+  assert.equal(withdrawal.amount, "200.00");
+  assert.equal(withdrawal.fee, "20.00");
+  assert.equal(withdrawal.netAmount, "180.00");
 
   let balance = await getBalance(user.id);
   assert.equal(balance.availableAmount.toFixed(2), "300.00");
@@ -463,15 +470,125 @@ test("penarikan memesan saldo dan hanya mendebit cadangan permanen saat selesai"
   assert.equal(completed.status, "COMPLETED");
   assert.equal(completed.settled, true);
   assert.ok(completed.completionReference);
+  // Approving/settling never re-derives or re-deducts the fee.
+  assert.equal(completed.amount, "200.00");
+  assert.equal(completed.fee, "20.00");
+  assert.equal(completed.netAmount, "180.00");
 
   balance = await getBalance(user.id);
   assert.equal(balance.availableAmount.toFixed(2), "300.00");
   assert.equal(balance.reservedAmount.toFixed(2), "0.00");
 
+  // The reservation is debited exactly once even though the fee is part of it.
+  const completedDebits = await prisma.transaction.findMany({
+    where: { userId: user.id, reference: `withdrawal:${withdrawal.id}:complete:reserved` },
+    select: { amount: true },
+  });
+  assert.equal(completedDebits.length, 1);
+  assert.equal(completedDebits[0]?.amount.toFixed(2), "-200.00");
+
   const invariant = await verifyBalanceInvariant(prisma, user.id);
   assert.equal(invariant.ok, true);
 });
 
+test("bukti transfer penarikan tersimpan saat selesai dan ditolak pada aksi lain", async () => {
+  const user = await createUser("withdrawal_proof");
+  await fundAvailable(user.id, new Prisma.Decimal("300.00"));
+
+  const withdrawal = await createWithdrawalRequest({
+    userId: user.id,
+    amount: new Prisma.Decimal("100.00"),
+    method: "BANK_TRANSFER",
+    destination: "BCA 9988776655",
+    meta,
+  });
+
+  const finance = await createUser("finance_proof", "ADMIN", "FINANCE");
+  const proof = {
+    storageKey: `proofs/withdrawal-${stamp}.png`,
+    fileName: "bukti-transfer.png",
+    mimeType: "image/png",
+    size: 2048,
+  };
+
+  // A proof is only meaningful when the payout is finalised: the service refuses
+  // to attach it to an intermediate action so a stray upload cannot leak into
+  // the queue.
+  await assert.rejects(
+    () =>
+      reviewWithdrawalRequest({
+        withdrawalId: withdrawal.id,
+        actorUserId: finance.id,
+        actorAdminRole: "FINANCE",
+        action: "APPROVED",
+        proof,
+        meta,
+      }),
+    (error: unknown) =>
+      error instanceof PaymentError && error.code === "INVALID_PROOF_ACTION" && error.status === 422,
+  );
+
+  await reviewWithdrawalRequest({
+    withdrawalId: withdrawal.id,
+    actorUserId: finance.id,
+    actorAdminRole: "FINANCE",
+    action: "APPROVED",
+    meta,
+  });
+  await reviewWithdrawalRequest({
+    withdrawalId: withdrawal.id,
+    actorUserId: finance.id,
+    actorAdminRole: "FINANCE",
+    action: "PROCESSING",
+    meta,
+  });
+  const completed = await reviewWithdrawalRequest({
+    withdrawalId: withdrawal.id,
+    actorUserId: finance.id,
+    actorAdminRole: "FINANCE",
+    action: "COMPLETED",
+    proof,
+    meta,
+  });
+  assert.equal(completed.status, "COMPLETED");
+
+  const stored = await prisma.withdrawalRequest.findUnique({
+    where: { id: withdrawal.id },
+    select: {
+      proofStorageKey: true,
+      proofFileName: true,
+      proofMimeType: true,
+      proofSize: true,
+    },
+  });
+  assert.equal(stored?.proofStorageKey, proof.storageKey);
+  assert.equal(stored?.proofFileName, proof.fileName);
+  assert.equal(stored?.proofMimeType, proof.mimeType);
+  assert.equal(stored?.proofSize, proof.size);
+
+  // The attachment is recorded on the audit snapshot too, so the trail shows who
+  // uploaded the receipt and when.
+  const audit = await prisma.auditLog.findFirst({
+    where: { entityType: "WithdrawalRequest", entityId: withdrawal.id, action: "withdrawal.completed" },
+    select: { after: true },
+  });
+  const after = audit?.after as Record<string, unknown> | null;
+  assert.equal(after?.proofFileName, proof.fileName);
+
+  // A completed request is terminal: a second proof cannot rewrite history.
+  await assert.rejects(
+    () =>
+      reviewWithdrawalRequest({
+        withdrawalId: withdrawal.id,
+        actorUserId: finance.id,
+        actorAdminRole: "FINANCE",
+        action: "COMPLETED",
+        proof,
+        meta,
+      }),
+    (error: unknown) => error instanceof PaymentError && error.status === 409,
+  );
+});
 test("penolakan penarikan membebaskan cadangan ke saldo tersedia", async () => {
   const user = await createUser("reject_withdrawal");
   await fundAvailable(user.id, new Prisma.Decimal("150.00"));
@@ -534,6 +651,125 @@ test("penarikan melebihi saldo tersedia ditolak tanpa meninggalkan permintaan", 
     0,
   );
 });
+
+test("biaya penarikan 10% dihitung dari bruto untuk 100/500/1000 USDT", async () => {
+  const cases = [
+    { gross: "100.00", fee: "10.00", net: "90.00" },
+    { gross: "500.00", fee: "50.00", net: "450.00" },
+    { gross: "1000.00", fee: "100.00", net: "900.00" },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    const user = await createUser(`fee_case_${index}`);
+    await fundAvailable(user.id, new Prisma.Decimal("2000.00"));
+
+    const withdrawal = await createWithdrawalRequest({
+      userId: user.id,
+      amount: new Prisma.Decimal(item.gross),
+      method: "BANK_TRANSFER",
+      destination: `BCA 999000${index}`,
+      meta,
+    });
+
+    assert.equal(withdrawal.amount, item.gross);
+    assert.equal(withdrawal.fee, item.fee);
+    assert.equal(withdrawal.netAmount, item.net);
+
+    // The stored row matches exactly what the API returned (no display/storage drift).
+    const row = await prisma.withdrawalRequest.findUnique({
+      where: { id: withdrawal.id },
+      select: { amount: true, fee: true, netAmount: true, idempotencyKey: true },
+    });
+    assert.equal(row?.amount.toFixed(2), item.gross);
+    assert.equal(row?.fee?.toFixed(2), item.fee);
+    assert.equal(row?.netAmount?.toFixed(2), item.net);
+
+    // The gross is reserved; the fee is only a breakdown, never an extra charge.
+    const balance = await getBalance(user.id);
+    assert.equal(
+      balance.availableAmount.toFixed(2),
+      new Prisma.Decimal("2000.00").minus(item.gross).toFixed(2),
+    );
+    assert.equal(balance.reservedAmount.toFixed(2), item.gross);
+  }
+});
+
+test("nominal penarikan nol atau negatif ditolak tanpa meninggalkan jejak", async () => {
+  const user = await createUser("zero_withdrawal");
+  await fundAvailable(user.id, new Prisma.Decimal("100.00"));
+
+  for (const value of ["0.00", "0.001", "-10.00"]) {
+    await assert.rejects(
+      () =>
+        createWithdrawalRequest({
+          userId: user.id,
+          amount: new Prisma.Decimal(value),
+          method: "EWALLET",
+          destination: "0812000000",
+          meta,
+        }),
+      (error: unknown) => error instanceof PaymentError && error.code === "INVALID_AMOUNT",
+    );
+  }
+
+  assert.equal(await prisma.withdrawalRequest.count({ where: { userId: user.id } }), 0);
+  const balance = await getBalance(user.id);
+  assert.equal(balance.availableAmount.toFixed(2), "100.00");
+});
+
+test("klik berulang dengan kunci idempotensi tidak memotong saldo dua kali", async () => {
+  const user = await createUser("idempotent_withdrawal");
+  await fundAvailable(user.id, new Prisma.Decimal("300.00"));
+
+  const key = randomUUID();
+  const input = {
+    userId: user.id,
+    amount: new Prisma.Decimal("100.00"),
+    method: "BANK_TRANSFER",
+    destination: "BCA 123123",
+    idempotencyKey: key,
+    meta,
+  };
+
+  const first = await createWithdrawalRequest(input);
+  const second = await createWithdrawalRequest(input);
+
+  assert.equal(first.id, second.id);
+  assert.equal(first.fee, "10.00");
+  assert.equal(second.fee, "10.00");
+  assert.equal(await prisma.withdrawalRequest.count({ where: { userId: user.id } }), 1);
+
+  const balance = await getBalance(user.id);
+  assert.equal(balance.availableAmount.toFixed(2), "200.00");
+  assert.equal(balance.reservedAmount.toFixed(2), "100.00");
+});
+
+test("riwayat penarikan mencatat bruto, biaya, netto, dan status", async () => {
+  const user = await createUser("history_withdrawal");
+  await fundAvailable(user.id, new Prisma.Decimal("150.00"));
+
+  await createWithdrawalRequest({
+    userId: user.id,
+    amount: new Prisma.Decimal("100.00"),
+    method: "EWALLET",
+    destination: "0812345678",
+    meta,
+  });
+
+  const history = await listWithdrawalsForUser(user.id);
+  assert.equal(history.length, 1);
+  assert.equal(history[0]?.amount, "100.00");
+  assert.equal(history[0]?.fee, "10.00");
+  assert.equal(history[0]?.netAmount, "90.00");
+  assert.equal(history[0]?.status, "PENDING");
+
+  const adminRows = await listWithdrawalsForAdmin({ search: user.username });
+  const adminRow = adminRows.find((row) => row.id === history[0]?.id);
+  assert.equal(adminRow?.amount, "100.00");
+  assert.equal(adminRow?.fee, "10.00");
+  assert.equal(adminRow?.netAmount, "90.00");
+});
+
 
 test("peralihan penarikan yang tidak valid ditolak dengan kode bersih", async () => {
   const user = await createUser("bad_transition");

@@ -1,9 +1,21 @@
-/** Reject cross-site state-changing requests. Returns false when Origin is absent. */
+/**
+ * Reject cross-site state-changing requests. Returns false when Origin is absent.
+ *
+ * Next's development server can normalize `request.url` to localhost even when
+ * the browser reached it through the machine's LAN address. The Host header is
+ * the request authority in that case, so use it when constructing the effective
+ * target origin (while retaining the URL scheme, or the trusted proxy scheme).
+ */
 export function assertSameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   if (!origin) return false;
   try {
-    return new URL(origin).origin === new URL(request.url).origin;
+    const requestUrl = new URL(request.url);
+    const host = request.headers.get("host")?.trim();
+    const forwardedProtocol = request.headers.get("x-forwarded-proto")?.split(",", 1)[0]?.trim();
+    const protocol = forwardedProtocol || requestUrl.protocol.replace(/:$/, "");
+    const targetOrigin = host ? new URL(`${protocol}://${host}`).origin : requestUrl.origin;
+    return new URL(origin).origin === targetOrigin;
   } catch {
     return false;
   }

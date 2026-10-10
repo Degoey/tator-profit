@@ -4,6 +4,7 @@ import { Loader2, Save } from "lucide-react";
 import * as React from "react";
 
 import { FormField } from "@/components/auth/form-field";
+import { NoPrefillInput } from "@/components/auth/no-prefill-input";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,8 +89,11 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
       ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* The editor already holds the saved values, so the browser must not type
+            its own profile over them: Chrome/Edge autofill personal fields on load
+            and would show a name nobody in this account ever saved. */}
         <FormField label="Nama tampilan" htmlFor="profile-name" error={fieldErrors.name}>
-          <Input
+          <NoPrefillInput
             id="profile-name"
             name="name"
             autoComplete="name"
@@ -99,7 +103,7 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
         </FormField>
 
         <FormField label="Nomor telepon" htmlFor="profile-phone" error={fieldErrors.phone}>
-          <Input
+          <NoPrefillInput
             id="profile-phone"
             name="phone"
             type="tel"
@@ -110,7 +114,7 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
         </FormField>
 
         <FormField label="Negara" htmlFor="profile-country" error={fieldErrors.country}>
-          <Input
+          <NoPrefillInput
             id="profile-country"
             name="country"
             autoComplete="country-name"
@@ -120,7 +124,7 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
         </FormField>
 
         <FormField label="Kota" htmlFor="profile-city" error={fieldErrors.city}>
-          <Input
+          <NoPrefillInput
             id="profile-city"
             name="city"
             autoComplete="address-level2"

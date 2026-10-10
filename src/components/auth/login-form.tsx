@@ -57,7 +57,10 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+    // The credentials fields deliberately opt out of browser autofill/address
+    // pre-fill, so nothing personal shows up before the visitor types. A password
+    // manager can still fill the password from its own UI.
+    <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off" noValidate>
       {formError ? (
         <Alert variant="danger" title="Masuk gagal">
           {formError}
@@ -72,7 +75,7 @@ export function LoginForm() {
         <Input
           id="identifier"
           name="identifier"
-          autoComplete="username"
+          autoComplete="off"
           placeholder="nama_pengguna atau anda@contoh.com"
           value={identifier}
           onChange={(event) => setIdentifier(event.target.value)}

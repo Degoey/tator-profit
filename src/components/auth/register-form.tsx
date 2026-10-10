@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
 
 import { FormField } from "@/components/auth/form-field";
+import { NoPrefillInput } from "@/components/auth/no-prefill-input";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -77,7 +78,12 @@ export function RegisterForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+    // The personal fields use `NoPrefillInput` because `autoComplete="off"` is
+    // ignored by Chrome/Edge, which would leave the visitor's saved name sitting
+    // in "Nama lengkap" before they type anything. The account has to be created
+    // with data the user actually typed; the server validates it all again anyway
+    // (`registerSchema`).
+    <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off" noValidate>
       {formError ? (
         <Alert variant="danger" title="Pendaftaran gagal">
           {formError}
@@ -86,10 +92,10 @@ export function RegisterForm() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <FormField label="Nama lengkap" error={fieldErrors.name} htmlFor="name">
-          <Input
+          <NoPrefillInput
             id="name"
             name="name"
-            autoComplete="name"
+            autoComplete="off"
             placeholder="Nama lengkap Anda"
             value={form.name}
             onChange={(event) => update("name", event.target.value)}
@@ -99,10 +105,10 @@ export function RegisterForm() {
         </FormField>
 
         <FormField label="Nama pengguna" error={fieldErrors.username} htmlFor="username">
-          <Input
+          <NoPrefillInput
             id="username"
             name="username"
-            autoComplete="username"
+            autoComplete="off"
             placeholder="nama_pengguna"
             value={form.username}
             onChange={(event) => update("username", event.target.value.toLowerCase())}
@@ -112,11 +118,11 @@ export function RegisterForm() {
         </FormField>
 
         <FormField label="Surel" error={fieldErrors.email} htmlFor="email">
-          <Input
+          <NoPrefillInput
             id="email"
             name="email"
             type="email"
-            autoComplete="email"
+            autoComplete="off"
             placeholder="anda@contoh.com"
             value={form.email}
             onChange={(event) => update("email", event.target.value)}
@@ -126,10 +132,10 @@ export function RegisterForm() {
         </FormField>
 
         <FormField label="Nomor telepon" error={fieldErrors.phone} htmlFor="phone">
-          <Input
+          <NoPrefillInput
             id="phone"
             name="phone"
-            autoComplete="tel"
+            autoComplete="off"
             placeholder="+628123456789"
             value={form.phone}
             onChange={(event) => update("phone", event.target.value)}

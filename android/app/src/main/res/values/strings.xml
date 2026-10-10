@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Launcher label. Mirrors `name` in src/app/manifest.ts. -->
+    <string name="app_name">Tatorprofit Admin</string>
+
+    <string name="external_link_no_app">Tidak ada aplikasi di perangkat ini yang bisa membuka tautan tersebut.</string>
+    <string name="download_started">Mengunduh berkas…</string>
+    <string name="download_failed">Unduhan tidak bisa dimulai.</string>
+    <string name="ssl_error">Koneksi tidak aman dan dibatalkan. Periksa sertifikat server.</string>
+    <string name="webview_unavailable">WebView Android tidak tersedia atau perlu diperbarui.</string>
+    <string name="file_chooser_unavailable">Tidak ada aplikasi berkas untuk memilih berkas.</string>
+</resources>

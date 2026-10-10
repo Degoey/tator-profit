@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <title>Tidak ada koneksi</title>
+    <!--
+      Shipped inside the APK and rendered by MainActivity#showOfflinePage when a
+      top-level navigation fails, so it works with no network at all.
+
+      It deliberately holds no data: the panel always shows live server numbers,
+      and a cached balance must never be mistaken for real money data.
+
+      __TATORPROFIT_APP_URL__ is replaced with the last URL the user asked for.
+    -->
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background-color: #04070a;
+        background-image:
+          radial-gradient(900px 500px at 12% -8%, rgba(43, 255, 156, 0.16), transparent 70%),
+          radial-gradient(760px 460px at 88% 4%, rgba(246, 196, 83, 0.13), transparent 72%);
+        color: rgba(255, 255, 255, 0.92);
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-text-size-adjust: 100%;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        padding: 32px 24px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.03);
+        text-align: center;
+      }
+      .mark {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto;
+        display: grid;
+        place-items: center;
+        border: 1px solid rgba(43, 255, 156, 0.4);
+        border-radius: 16px;
+        background: rgba(43, 255, 156, 0.1);
+      }
+      .mark svg {
+        width: 24px;
+        height: 24px;
+        fill: none;
+        stroke: #2bff9c;
+        stroke-width: 1.8;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+      h1 {
+        margin: 20px 0 0;
+        font-size: 19px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: #ffffff;
+      }
+      p {
+        margin: 8px 0 0;
+        font-size: 14px;
+        line-height: 1.6;
+        color: rgba(255, 255, 255, 0.6);
+      }
+      button {
+        width: 100%;
+        height: 44px;
+        margin-top: 24px;
+        border: 0;
+        border-radius: 12px;
+        background: #2bff9c;
+        color: #04120a;
+        font-family: inherit;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .hint {
+        margin-top: 14px;
+        font-size: 12px;
+        color: rgba(255, 255, 255, 0.45);
+      }
+      .hint[hidden] {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <rect x="6" y="2" width="12" height="20" rx="3" />
+          <path d="M11 18h2" />
+        </svg>
+      </span>
+
+      <h1>Perangkat sedang tanpa koneksi</h1>
+      <p>
+        Panel administrasi selalu menampilkan data langsung dari server, jadi layar ini tidak
+        menyimpan salinan angka apa pun. Sambungkan kembali internet lalu muat ulang.
+      </p>
+
+      <button id="retry" type="button">Coba lagi</button>
+      <p class="hint" id="hint" hidden>Alamat aplikasi belum dikonfigurasi pada build ini.</p>
+    </main>
+
+    <script>
+      (function () {
+        var target = "__TATORPROFIT_APP_URL__";
+        var button = document.getElementById("retry");
+        var hint = document.getElementById("hint");
+
+        function retry() {
+          window.location.href = target;
+        }
+
+        // The token is replaced with a build-time URL; never trust it blindly.
+        if (!/^https?:\/\//i.test(target)) {
+          button.disabled = true;
+          hint.hidden = false;
+          return;
+        }
+
+        button.addEventListener("click", retry);
+        // Regaining connectivity is the common case: reload without a tap.
+        window.addEventListener("online", retry);
+      })();
+    </script>
+  </body>
+</html>

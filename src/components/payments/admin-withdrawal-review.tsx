@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Eye,
+  FileUp,
   Loader2,
   Package,
   RotateCcw,
@@ -13,7 +14,13 @@ import * as React from "react";
 
 import { DataTable, type DataTableColumn } from "@/components/payments/data-table";
 import { ConfirmDialog, Modal } from "@/components/payments/modal";
-import { WITHDRAWAL_METHODS, optionLabel } from "@/components/payments/options";
+import {
+  PROOF_ACCEPT,
+  PROOF_MAX_BYTES,
+  PROOF_MAX_MB,
+  WITHDRAWAL_METHODS,
+  optionLabel,
+} from "@/components/payments/options";
 import { DetailItem, RequestAuditList, type RequestAuditEntry } from "@/components/payments/review-detail";
 import { PaymentStatusBadge, formatPaymentDate } from "@/components/payments/status-badge";
 import { Alert } from "@/components/ui/alert";
@@ -24,7 +31,12 @@ import { formatMoney } from "@/lib/money";
 
 export interface AdminWithdrawalRow {
   id: string;
+  /** Gross amount requested. */
   amount: string;
+  /** Platform fee (10% of the gross). */
+  fee: string;
+  /** Gross minus fee — the amount that must be paid out. */
+  netAmount: string;
   currency: string;
   method: string;
   destination: string;
@@ -43,6 +55,10 @@ export interface AdminWithdrawalRow {
   completedAt: Date | string | null;
   /** Audit entries for this single request, newest first. */
   auditHistory: RequestAuditEntry[];
+  /** Transfer proof uploaded by an administrator when marking the payout done. */
+  proofFileName: string | null;
+  proofMimeType: string | null;
+  proofSize: number | null;
 }
 
 interface ReviewAction {
@@ -78,9 +94,34 @@ export function AdminWithdrawalReview({
   const [detail, setDetail] = React.useState<AdminWithdrawalRow | null>(null);
   const [pendingReview, setPendingReview] = React.useState<PendingReview | null>(null);
   const [reason, setReason] = React.useState("");
+  const [proof, setProof] = React.useState<File | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const proofInputRef = React.useRef<HTMLInputElement | null>(null);
+
+  /** Resets the confirmation form without touching the notice banner. */
+  function resetReviewForm() {
+    setPendingReview(null);
+    setReason("");
+    setProof(null);
+    setFileError(null);
+    setError(null);
+    if (proofInputRef.current) proofInputRef.current.value = "";
+  }
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    setFileError(null);
+    if (file && file.size > PROOF_MAX_BYTES) {
+      setFileError(`Ukuran bukti maksimal ${PROOF_MAX_MB} MB.`);
+      setProof(null);
+      event.target.value = "";
+      return;
+    }
+    setProof(file);
+  }
 
   const columns: DataTableColumn<AdminWithdrawalRow>[] = [
     {
@@ -158,15 +199,33 @@ export function AdminWithdrawalReview({
     setError(null);
 
     try {
-      const response = await fetch("/api/admin/withdrawals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: pendingReview.row.id,
-          action: pendingReview.action.value,
-          reason: reason.trim() || undefined,
-        }),
-      });
+      // Marking the payout COMPLETED may carry an optional transfer proof: the
+      // route accepts multipart for that step (and coordinates it with the
+      // private proof store). Every other action stays a plain JSON body.
+      const requestInit: RequestInit =
+        pendingReview.action.value === "COMPLETED"
+          ? {
+              method: "POST",
+              body: (() => {
+                const body = new FormData();
+                body.set("id", pendingReview.row.id);
+                body.set("action", pendingReview.action.value);
+                body.set("reason", reason.trim());
+                if (proof) body.set("proof", proof);
+                return body;
+              })(),
+            }
+          : {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                id: pendingReview.row.id,
+                action: pendingReview.action.value,
+                reason: reason.trim() || undefined,
+              }),
+            };
+
+      const response = await fetch("/api/admin/withdrawals", requestInit);
       const payload = (await response.json()) as {
         ok: boolean;
         message?: string;
@@ -189,6 +248,8 @@ export function AdminWithdrawalReview({
       setPendingReview(null);
       setDetail(null);
       setReason("");
+      setProof(null);
+      if (proofInputRef.current) proofInputRef.current.value = "";
       window.location.reload();
     } catch {
       setError("Gangguan jaringan. Silakan coba lagi.");
@@ -274,6 +335,15 @@ export function AdminWithdrawalReview({
                 accent
               />
               <DetailItem
+                label="Biaya penarikan (10%)"
+                value={formatMoney(detail.fee, detail.currency)}
+              />
+              <DetailItem
+                label="Nominal bersih dibayarkan"
+                value={formatMoney(detail.netAmount, detail.currency)}
+                accent
+              />
+              <DetailItem
                 label="Metode"
                 value={optionLabel(WITHDRAWAL_METHODS, detail.method)}
               />
@@ -291,6 +361,29 @@ export function AdminWithdrawalReview({
                 value={<PaymentStatusBadge status={detail.status} />}
               />
             </dl>
+
+            {detail.proofFileName ? (
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
+                  Bukti transfer (dilampirkan)
+                </p>
+                <p className="mt-1 text-sm text-white/75">
+                  {detail.proofFileName}
+                  {detail.proofSize ? ` · ${(detail.proofSize / 1024).toFixed(0)} KB` : ""}
+                  {detail.proofMimeType ? ` · ${detail.proofMimeType}` : ""}
+                </p>
+                <Button asChild variant="outline" size="sm" className="mt-3">
+                  <a
+                    href={`/api/withdrawals/${detail.id}/proof`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Eye aria-hidden />
+                    Buka bukti (privat)
+                  </a>
+                </Button>
+              </div>
+            ) : null}
 
             {detail.notes ? (
               <Alert variant="info" title="Catatan pengguna">
@@ -332,6 +425,9 @@ export function AdminWithdrawalReview({
                       onClick={() => {
                         setError(null);
                         setReason("");
+                        setProof(null);
+                        setFileError(null);
+                        if (proofInputRef.current) proofInputRef.current.value = "";
                         setPendingReview({ row: detail, action });
                       }}
                     >
@@ -356,7 +452,7 @@ export function AdminWithdrawalReview({
         title={pendingReview?.action.label ?? "Konfirmasi tindakan"}
         description={
           pendingReview
-            ? `Penarikan ${formatMoney(pendingReview.row.amount, pendingReview.row.currency)} untuk @${pendingReview.row.userUsername}. Tindakan ini tercatat permanen pada jejak audit.`
+            ? `Penarikan ${formatMoney(pendingReview.row.amount, pendingReview.row.currency)} untuk @${pendingReview.row.userUsername}. Nominal bersih dibayarkan ${formatMoney(pendingReview.row.netAmount, pendingReview.row.currency)} (biaya ${formatMoney(pendingReview.row.fee, pendingReview.row.currency)}). Tindakan ini tercatat permanen pada jejak audit.`
             : ""
         }
         confirmLabel="Konfirmasi"
@@ -364,9 +460,7 @@ export function AdminWithdrawalReview({
         pending={submitting}
         onCancel={() => {
           if (submitting) return;
-          setPendingReview(null);
-          setReason("");
-          setError(null);
+          resetReviewForm();
         }}
         onConfirm={() => {
           if (pendingReview?.action.requiresReason && reason.trim().length < 3) {
@@ -407,6 +501,31 @@ export function AdminWithdrawalReview({
               : "Catatan opsional yang tersimpan pada riwayat tinjauan."}
           </p>
         </div>
+
+        {pendingReview?.action.value === "COMPLETED" ? (
+          <div className="space-y-2">
+            <label
+              htmlFor="withdrawal-review-proof"
+              className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/60"
+            >
+              <FileUp className="size-3.5" aria-hidden />
+              Bukti transfer (opsional)
+            </label>
+            <Input
+              id="withdrawal-review-proof"
+              ref={proofInputRef}
+              type="file"
+              accept={PROOF_ACCEPT}
+              onChange={handleFileChange}
+              disabled={submitting}
+              className="h-auto py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-white/10 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white"
+            />
+            <p className="text-xs text-white/40">
+              {fileError ??
+                `PNG, JPG atau PDF, maksimal ${PROOF_MAX_MB} MB. Berkas disimpan privat dan dapat diunduh pengguna pada detail penarikan.`}
+            </p>
+          </div>
+        ) : null}
 
         <div className="flex items-center gap-2 text-xs text-white/50">
           {submitting ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : null}

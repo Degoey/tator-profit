@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Shell layout: a thin progress bar over a full-bleed WebView.
+
+  The WebView itself is created in code (`MainActivity#installWebView`) so it can
+  be rebuilt if the renderer process is killed, and so the shell layout stays
+  free of any web content.
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/brand_ink">
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:layout_gravity="top"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="@color/brand_neon"
+        android:visibility="gone" />
+</FrameLayout>

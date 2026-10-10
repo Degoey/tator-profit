@@ -1,13 +1,16 @@
+import { Download } from "lucide-react";
 import type { Metadata } from "next";
 
 import { PaymentKpis, PaymentShell } from "@/components/payments/payment-shell";
 import { WithdrawalForm } from "@/components/payments/withdrawal-form";
 import { WithdrawalHistory } from "@/components/payments/withdrawal-history";
 import { Alert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { withdrawalAmounts } from "@/lib/withdrawal-fee";
 
 export const dynamic = "force-dynamic";
 
@@ -74,31 +77,48 @@ export default async function WithdrawalPage() {
         <CardHeader>
           <CardTitle>Riwayat penarikan</CardTitle>
           <p className="text-xs text-white/45">200 pengajuan terbaru · waktu UTC</p>
+          <div className="mt-3">
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/withdrawals/export">
+                <Download aria-hidden />
+                Unduh rekap CSV
+              </a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <WithdrawalHistory
-            rows={history.map((row) => ({
-              id: row.id,
-              amount: row.amount.toFixed(2),
-              currency: row.currency,
-              method: row.method,
-              destination: row.destination,
-              notes: row.notes,
-              status: row.status,
-              rejectionReason: row.rejectionReason,
-              reviewNote: row.reviewNote,
-              createdAt: row.createdAt,
-              reviewedAt: row.reviewedAt,
-              processedAt: row.processedAt,
-              completedAt: row.completedAt,
-            }))}
+            rows={history.map((row) => {
+              const amounts = withdrawalAmounts(row);
+              return {
+                id: row.id,
+                amount: row.amount.toFixed(2),
+                fee: amounts.fee,
+                netAmount: amounts.netAmount,
+                currency: row.currency,
+                method: row.method,
+                destination: row.destination,
+                notes: row.notes,
+                status: row.status,
+                rejectionReason: row.rejectionReason,
+                reviewNote: row.reviewNote,
+                proofFileName: row.proofFileName,
+                proofMimeType: row.proofMimeType,
+                proofSize: row.proofSize,
+                createdAt: row.createdAt,
+                reviewedAt: row.reviewedAt,
+                processedAt: row.processedAt,
+                completedAt: row.completedAt,
+              };
+            })}
           />
         </CardContent>
       </Card>
 
       <Alert variant="warning" title="Ketentuan program">
-        Penarikan tidak otomatis disetujui dan diproses manual. Saldo yang tertahan tidak dapat
-        dipakai untuk permintaan lain sampai statusnya selesai atau ditolak.
+        Setiap penarikan dikenakan biaya 10% dari nominal penarikan. Jumlah yang diterima adalah
+        nominal penarikan setelah dikurangi biaya. Penarikan diproses manual dan saldo yang tertahan
+        tidak dapat dipakai untuk permintaan lain sampai statusnya selesai atau ditolak.
       </Alert>
     </PaymentShell>
   );

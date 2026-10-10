@@ -79,6 +79,18 @@ parsial). Penolakan mengembalikan `RESERVED` → `AVAILABLE`; hanya `PROCESSING`
 `COMPLETED` yang mendebit cadangan secara permanen. Transfer eksternal dilakukan manual
 dan statusnya jujur (tidak ada klaim transfer selesai tanpa verifikasi).
 
+Setiap penarikan dikenakan biaya **10%** yang selalu dihitung ulang oleh server dari
+nominal bruto (`WITHDRAWAL_FEE_RATE`), jadi klien tidak dapat memalsukan angka yang
+dibebankan. Saat admin menandai `COMPLETED`, admin dapat melampirkan **bukti transfer**
+(PNG/JPG/PDF, maksimal 5 MiB) yang divalidasi dan disimpan privat persis seperti bukti
+setoran, lalu diunduh pemilik atau admin berizin lewat `/api/withdrawals/<id>/proof`.
+
+Riwayat tersedia sebagai API `GET /api/withdrawals` (anggota: miliknya sendiri;
+admin dengan kemampuan `read`: seluruh antrean, dengan `status`/`search`/`take`) dan
+sebagai **rekap CSV** `/api/withdrawals/export` (lengkap dengan kolom biaya dan netto;
+`?scope=admin` khusus admin). Sel yang berasal dari input pengguna dinetralkan agar tidak
+dapat dieksekusi sebagai formula oleh aplikasi spreadsheet.
+
 ## 5. Ledger dan audit log (Tahap 6)
 
 - Ledger `Transaction` bersifat **append-only**: trigger `tatorprofit_ledger_guard()`

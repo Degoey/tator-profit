@@ -17,7 +17,7 @@ pemeriksaan manual berbasis pembacaan kode dan pengujian yang tersedia; audit in
 | Sesi & cookie | `src/lib/auth/session.ts`, `src/lib/auth/tokens.ts` |
 | Otorisasi admin | `src/lib/auth/admin-permissions.ts`, `src/lib/auth/admin-guard.ts`, `src/lib/auth/current-user.ts` |
 | Otorisasi transaksi | `src/lib/services/manual-payment-service.ts`, `admin-credit-service.ts`, `reward-service.ts`, `program-service.ts` |
-| IDOR | `src/app/api/deposits/[id]/proof/route.ts`, `src/app/api/referral/route.ts`, seluruh route `/api/*` |
+| IDOR | `src/app/api/deposits/[id]/proof/route.ts`, `src/app/api/withdrawals/[id]/proof/route.ts`, `src/app/api/referral/route.ts`, seluruh route `/api/*` |
 | Validasi input | `src/lib/validation.ts`, `src/lib/payment-validation.ts`, `src/lib/payment-proof.ts` |
 | Unggahan berkas | `src/lib/payment-proof.ts` (tipe, ekstensi, magic byte, ukuran) |
 | Rate limit | `src/lib/rate-limit.ts`, route `login`, `register`, `forgot-password`, `reset-password` |
@@ -76,7 +76,9 @@ pemeriksaan manual berbasis pembacaan kode dan pengujian yang tersedia; audit in
   `session.userId`.
 - Unggahan bukti: MIME + ekstensi + magic byte harus cocok, ukuran dihitung dari
   aliran byte (bukan `Content-Length`), nama berkas dipilih server, disimpan di luar
-  `public/`, diunduh sebagai `attachment` dengan `nosniff` dan `CSP: sandbox`.
+  `public/`, diunduh sebagai `attachment` dengan `nosniff` dan `CSP: sandbox`. Berlaku
+  untuk bukti setoran (`/api/deposits/[id]/proof`) dan bukti transfer penarikan
+  (`/api/withdrawals/[id]/proof`), keduanya memeriksa kepemilikan atau izin `readProof`.
 - Uang tidak pernah melewati `float`: validasi string desimal + `Prisma.Decimal`
   dengan skala 2/4 desimal dan pembulatan half-up.
 - Ledger append-only dijaga trigger database; saldo hanya berubah lewat

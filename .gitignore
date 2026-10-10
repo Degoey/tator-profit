@@ -35,3 +35,17 @@ credentials/
 .eslintcache
 coverage/
 
+# Android wrapper (android/) — build outputs, local SDK path and signing keys.
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/local.properties
+android/keystore.properties
+android/*.jks
+android/*.keystore
+android/app/release/
+android/dist/
+*.apk
+*.aab
+*.ap_
+

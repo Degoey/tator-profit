@@ -490,6 +490,14 @@ async function verifyWithdrawalFlow(context: FlowContext) {
     `status=${first.status} kode=${first.body?.code ?? "-"}`,
   );
 
+  check(
+    "biaya penarikan 10% dan netto dihitung oleh server",
+    first.body?.data?.amount === "50.00" &&
+      first.body?.data?.fee === "5.00" &&
+      first.body?.data?.netAmount === "45.00",
+    `bruto=${first.body?.data?.amount ?? "-"} biaya=${first.body?.data?.fee ?? "-"} netto=${first.body?.data?.netAmount ?? "-"}`,
+  );
+
   const reserved = await balanceOf(memberId);
   check(
     "pengajuan penarikan memindahkan dana ke saldo ditahan",
@@ -519,13 +527,22 @@ async function verifyWithdrawalFlow(context: FlowContext) {
   const processing = await admin.request("/api/admin/withdrawals", {
     body: { id: withdrawalId, action: "PROCESSING" },
   });
-  const completed = await admin.request("/api/admin/withdrawals", {
-    body: { id: withdrawalId, action: "COMPLETED" },
-  });
+
+  // Finalising the payout may carry the transfer receipt: the same route accepts
+  // multipart form data for this step, validates the file and stores it privately.
+  const completionForm = new FormData();
+  completionForm.set("id", withdrawalId);
+  completionForm.set("action", "COMPLETED");
+  completionForm.set("reason", "Transfer diselesaikan, bukti dilampirkan");
+  completionForm.set(
+    "proof",
+    new File([tinyPng()], "bukti-transfer.png", { type: "image/png" }),
+  );
+  const completed = await admin.request("/api/admin/withdrawals", { form: completionForm });
   check(
     "penarikan melewati tahap disetujui, diproses, lalu selesai",
     approved.status === 200 && processing.status === 200 && completed.status === 200,
-    `disetujui=${approved.status} diproses=${processing.status} selesai=${completed.status}`,
+    `disetujui=${approved.status} diproses=${processing.status} selesai=${completed.status} kode=${completed.body?.code ?? "-"}`,
   );
 
   const settled = await balanceOf(memberId);
@@ -542,6 +559,101 @@ async function verifyWithdrawalFlow(context: FlowContext) {
     "penarikan selesai tidak dapat diputar ulang",
     replay.status === 409,
     `status=${replay.status} kode=${replay.body?.code ?? "-"}`,
+  );
+
+  // ------------------------------------------------------ proof of transfer --
+  const storedWithdrawal = await prisma.withdrawalRequest.findUnique({
+    where: { id: withdrawalId },
+    select: { proofStorageKey: true, proofFileName: true, proofMimeType: true, proofSize: true },
+  });
+  check(
+    "bukti transfer penarikan tersimpan privat setelah selesai",
+    storedWithdrawal?.proofFileName === "bukti-transfer.png" &&
+      storedWithdrawal?.proofMimeType === "image/png" &&
+      (storedWithdrawal?.proofSize ?? 0) > 0 &&
+      Boolean(storedWithdrawal?.proofStorageKey),
+    JSON.stringify(storedWithdrawal),
+  );
+
+  const guest = new Session("tamu");
+  const guestProof = await guest.request(`/api/withdrawals/${withdrawalId}/proof`);
+  check(
+    "tamu tidak dapat mengunduh bukti penarikan",
+    guestProof.status === 401,
+    `status=${guestProof.status}`,
+  );
+
+  const ownerProof = await member.request(`/api/withdrawals/${withdrawalId}/proof`);
+  check(
+    "pemilik mengunduh bukti penarikan sebagai lampiran yang tidak di-cache",
+    ownerProof.status === 200 &&
+      (ownerProof.headers.get("content-disposition") ?? "").includes("attachment") &&
+      (ownerProof.headers.get("cache-control") ?? "").includes("no-store"),
+    `status=${ownerProof.status} disposisi=${ownerProof.headers.get("content-disposition") ?? "-"}`,
+  );
+
+  // ------------------------------------------------------------ history API --
+  const memberHistory = await member.request("/api/withdrawals");
+  const memberRows: any[] = Array.isArray(memberHistory.body?.data?.rows)
+    ? memberHistory.body.data.rows
+    : [];
+  const ownRow = memberRows.find((row: any) => row.id === withdrawalId);
+  check(
+    "anggota membaca riwayat penarikan sendiri lewat API",
+    memberHistory.status === 200 &&
+      memberHistory.body?.data?.scope === "member" &&
+      ownRow?.fee === "5.00" &&
+      ownRow?.netAmount === "45.00",
+    `status=${memberHistory.status} baris=${memberRows.length}`,
+  );
+
+  const memberQueue = await member.request("/api/withdrawals?status=COMPLETED");
+  check(
+    "anggota tidak dapat membaca antrean penarikan admin",
+    memberQueue.status === 403,
+    `status=${memberQueue.status} kode=${memberQueue.body?.code ?? "-"}`,
+  );
+
+  const adminQueue = await admin.request("/api/withdrawals?status=COMPLETED&take=5");
+  const adminRows: any[] = Array.isArray(adminQueue.body?.data?.rows)
+    ? adminQueue.body.data.rows
+    : [];
+  check(
+    "admin membaca antrean penarikan dengan filter status",
+    adminQueue.status === 200 &&
+      adminRows.some((row: any) => row.id === withdrawalId && Boolean(row.username)) &&
+      adminRows.length <= 5,
+    `status=${adminQueue.status} baris=${adminRows.length}`,
+  );
+
+  // ------------------------------------------------------------- CSV recap ---
+  const memberCsv = await member.request("/api/withdrawals/export");
+  check(
+    "anggota mengunduh rekap CSV penarikan berisi biaya dan netto",
+    memberCsv.status === 200 &&
+      typeof memberCsv.body === "string" &&
+      memberCsv.body.includes("Biaya") &&
+      memberCsv.body.includes(withdrawalId) &&
+      memberCsv.body.includes('"5.00"') &&
+      memberCsv.body.includes('"45.00"'),
+    `status=${memberCsv.status} tipe=${memberCsv.headers.get("content-type") ?? "-"}`,
+  );
+
+  const memberAdminCsv = await member.request("/api/withdrawals/export?scope=admin");
+  check(
+    "anggota tidak dapat mengekspor rekap seluruh antrean",
+    memberAdminCsv.status === 403,
+    `status=${memberAdminCsv.status}`,
+  );
+
+  const adminCsv = await admin.request("/api/withdrawals/export?scope=admin");
+  check(
+    "admin mengekspor rekap antrean penarikan",
+    adminCsv.status === 200 &&
+      typeof adminCsv.body === "string" &&
+      adminCsv.body.includes("Pengguna") &&
+      adminCsv.body.includes(withdrawalId),
+    `status=${adminCsv.status}`,
   );
 
   // The completed withdrawal took the whole spendable balance with it, so the
@@ -748,10 +860,13 @@ async function cleanup() {
   });
   const withdrawals = await prisma.withdrawalRequest.findMany({
     where: { userId: { in: createdUserIds } },
-    select: { id: true },
+    select: { id: true, proofStorageKey: true },
   });
 
   for (const row of deposits) await deleteProofFile(row.proofStorageKey);
+  for (const row of withdrawals) {
+    if (row.proofStorageKey) await deleteProofFile(row.proofStorageKey);
+  }
 
   const entityIds = [...deposits.map((row) => row.id), ...withdrawals.map((row) => row.id)];
 

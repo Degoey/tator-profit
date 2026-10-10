@@ -28,6 +28,7 @@ export async function SiteHeader() {
     : [
         { href: "/programs", label: "Program" },
         { href: "/#tiers", label: "Pilihan Paket" },
+        { href: "/#deposit", label: "Setor Dana" },
         { href: "/#program", label: "Ketentuan Program" },
         { href: "/referral-terms", label: "Ketentuan Rujukan" },
         { href: "/#referral", label: "Rujukan" },

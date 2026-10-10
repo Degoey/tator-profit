@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Dark shell that matches the web UI (the ink token in src/app/globals.css),
+      so the window between launch and first paint never flashes white and the
+      system bars blend into the page.
+    -->
+    <style name="Theme.Tatorprofit" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/brand_ink</item>
+        <item name="android:colorBackground">@color/brand_ink</item>
+        <item name="android:statusBarColor">@color/brand_ink</item>
+        <item name="android:navigationBarColor">@color/brand_ink</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+    </style>
+</resources>

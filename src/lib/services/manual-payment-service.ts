@@ -6,6 +6,7 @@ import type { RequestMeta } from "@/lib/security";
 import { LedgerError, postLedgerEntry } from "@/lib/services/ledger-service";
 import { ProgramError, activateUserProgramInTransaction } from "@/lib/services/program-service";
 import { generateRewardsInTransaction } from "@/lib/services/reward-service";
+import { WITHDRAWAL_FEE_RATE, calculateWithdrawalFee, withdrawalAmounts } from "@/lib/withdrawal-fee";
 
 /**
  * Manual payment workflow (deposit / withdrawal).
@@ -73,10 +74,13 @@ export interface CreateDepositRequestInput {
 
 export interface CreateWithdrawalRequestInput {
   userId: string;
+  /** Gross amount requested by the member; the 10% fee is derived from it. */
   amount: Prisma.Decimal;
   method: string;
   destination: string;
   notes?: string;
+  /** Optional client key so a repeated click cannot create a second request. */
+  idempotencyKey?: string | null;
   meta?: RequestMeta;
 }
 
@@ -97,6 +101,7 @@ export interface ReviewWithdrawalRequestInput {
   /** Advisory only: the authoritative role is re-read from the database. */
   actorAdminRole?: AdminRole | null;
   action: WithdrawalAction;
+  proof?: DepositProofInput;
   reason?: string;
   note?: string;
   meta?: RequestMeta;
@@ -127,7 +132,12 @@ export interface ReviewDepositResult {
 export interface WithdrawalRequestSummary {
   id: string;
   status: WithdrawalStatus;
+  /** Gross amount requested (what the member typed). */
   amount: string;
+  /** Platform fee, 10% of the gross. */
+  fee: string;
+  /** Gross minus fee: the amount actually paid out. */
+  netAmount: string;
   currency: string;
   method: string;
   destination: string;
@@ -140,6 +150,8 @@ export interface ReviewWithdrawalResult {
   id: string;
   status: WithdrawalStatus;
   amount: string;
+  fee: string;
+  netAmount: string;
   currency: string;
   reservedReference: string | null;
   completionReference: string | null;
@@ -258,6 +270,57 @@ function assertPositiveAmount(amount: Prisma.Decimal, code: string): void {
 
 function decimal(value: Prisma.Decimal): string {
   return value.toFixed(2);
+}
+
+/** Columns every withdrawal summary needs, including the fee breakdown. */
+const WITHDRAWAL_SUMMARY_SELECT = {
+  id: true,
+  status: true,
+  amount: true,
+  fee: true,
+  netAmount: true,
+  currency: true,
+  method: true,
+  destination: true,
+  notes: true,
+  reservedReference: true,
+  createdAt: true,
+} as const;
+
+interface WithdrawalSummaryRow {
+  id: string;
+  status: WithdrawalStatus;
+  amount: Prisma.Decimal;
+  fee: Prisma.Decimal | null;
+  netAmount: Prisma.Decimal | null;
+  currency: string;
+  method: string;
+  destination: string;
+  notes: string | null;
+  reservedReference: string | null;
+  createdAt: Date;
+}
+
+/**
+ * Normalises a withdrawal row for the API/UI. Legacy rows without a fee keep
+ * their original payout (fee 0, net = gross), so historical data is never
+ * retroactively re-priced.
+ */
+function toWithdrawalSummary(row: WithdrawalSummaryRow): WithdrawalRequestSummary {
+  const amounts = withdrawalAmounts(row);
+  return {
+    id: row.id,
+    status: row.status,
+    amount: decimal(row.amount),
+    fee: amounts.fee,
+    netAmount: amounts.netAmount,
+    currency: row.currency,
+    method: row.method,
+    destination: row.destination,
+    notes: row.notes,
+    reservedReference: row.reservedReference,
+    createdAt: row.createdAt.toISOString(),
+  };
 }
 
 /** Indonesian member-facing notification copy for every review decision. */
@@ -663,9 +726,24 @@ export async function createWithdrawalRequest(
   input: CreateWithdrawalRequestInput,
 ): Promise<WithdrawalRequestSummary> {
   assertPositiveAmount(input.amount, "INVALID_AMOUNT");
+  // The fee is always derived here, on the server, from the gross the member
+  // requested. A fee sent by the browser is never read.
+  const { fee, netAmount } = calculateWithdrawalFee(input.amount);
 
   try {
     return await runSerializable(async (tx) => {
+      // Idempotent replay: the same client key re-reads the existing request
+      // instead of creating (and reserving) a second one on a repeated click.
+      if (input.idempotencyKey) {
+        const existing = await tx.withdrawalRequest.findFirst({
+          where: { userId: input.userId, idempotencyKey: input.idempotencyKey },
+          select: WITHDRAWAL_SUMMARY_SELECT,
+        });
+        if (existing) {
+          return toWithdrawalSummary(existing);
+        }
+      }
+
       const user = await tx.user.findUnique({
         where: { id: input.userId },
         select: { id: true, status: true, balance: { select: { currency: true } } },
@@ -695,12 +773,15 @@ export async function createWithdrawalRequest(
         data: {
           userId: input.userId,
           amount: input.amount,
+          fee,
+          netAmount,
           currency,
           method: input.method,
           destination: input.destination,
           notes: input.notes ?? null,
           status: "PENDING",
-          metadata: { submittedBy: input.userId },
+          idempotencyKey: input.idempotencyKey ?? null,
+          metadata: { submittedBy: input.userId, feeRate: WITHDRAWAL_FEE_RATE },
         },
         select: { id: true, status: true, amount: true, currency: true, createdAt: true },
       });
@@ -729,17 +810,7 @@ export async function createWithdrawalRequest(
       const updated = await tx.withdrawalRequest.update({
         where: { id: withdrawal.id },
         data: { reservedReference: reserved.reference },
-        select: {
-          id: true,
-          status: true,
-          amount: true,
-          currency: true,
-          method: true,
-          destination: true,
-          notes: true,
-          reservedReference: true,
-          createdAt: true,
-        },
+        select: WITHDRAWAL_SUMMARY_SELECT,
       });
 
       await tx.auditLog.create({
@@ -751,6 +822,9 @@ export async function createWithdrawalRequest(
           after: {
             status: updated.status,
             amount: decimal(updated.amount),
+            fee: fee.toFixed(2),
+            netAmount: netAmount.toFixed(2),
+            feeRate: WITHDRAWAL_FEE_RATE,
             currency: updated.currency,
             method: input.method,
             destination: input.destination,
@@ -761,17 +835,7 @@ export async function createWithdrawalRequest(
         },
       });
 
-      return {
-        id: updated.id,
-        status: updated.status,
-        amount: decimal(updated.amount),
-        currency: updated.currency,
-        method: updated.method,
-        destination: updated.destination,
-        notes: updated.notes,
-        reservedReference: updated.reservedReference,
-        createdAt: updated.createdAt.toISOString(),
-      };
+      return toWithdrawalSummary(updated);
     });
   } catch (error) {
     if (error instanceof LedgerError) mapLedgerError(error);
@@ -814,6 +878,8 @@ export async function reviewWithdrawalRequest(
           id: true,
           userId: true,
           amount: true,
+          fee: true,
+          netAmount: true,
           currency: true,
           status: true,
           reservedReference: true,
@@ -831,6 +897,9 @@ export async function reviewWithdrawalRequest(
         );
       }
 
+      if (input.proof && input.action !== "COMPLETED") {
+        throw new PaymentError("INVALID_PROOF_ACTION", "Bukti transfer hanya dilampirkan saat penarikan selesai.", 422);
+      }
       const now = new Date();
       let released = false;
       let settled = false;
@@ -886,11 +955,19 @@ export async function reviewWithdrawalRequest(
           processedAt: input.action === "PROCESSING" ? now : undefined,
           completedAt: input.action === "COMPLETED" ? now : undefined,
           completionReference: input.action === "COMPLETED" ? completionReference : undefined,
+          ...(input.proof ? {
+            proofStorageKey: input.proof.storageKey,
+            proofFileName: input.proof.fileName,
+            proofMimeType: input.proof.mimeType,
+            proofSize: input.proof.size,
+          } : {}),
         },
         select: {
           id: true,
           status: true,
           amount: true,
+          fee: true,
+          netAmount: true,
           currency: true,
           reservedReference: true,
           completionReference: true,
@@ -911,6 +988,14 @@ export async function reviewWithdrawalRequest(
           after: {
             status: updated.status,
             amount: decimal(updated.amount),
+            fee: withdrawalAmounts(updated).fee,
+            netAmount: withdrawalAmounts(updated).netAmount,
+            // APPROVED/PROCESSING/COMPLETED only move the already-reserved gross:
+            // the fee is never re-derived or deducted a second time here.
+            feeDeductedInThisAction: false,
+            proofFileName: input.proof?.fileName ?? null,
+            proofMimeType: input.proof?.mimeType ?? null,
+            proofSize: input.proof?.size ?? null,
             currency: updated.currency,
             released,
             settled,
@@ -940,10 +1025,13 @@ export async function reviewWithdrawalRequest(
         },
       });
 
+      const amounts = withdrawalAmounts(updated);
       return {
         id: updated.id,
         status: updated.status,
         amount: decimal(updated.amount),
+        fee: amounts.fee,
+        netAmount: amounts.netAmount,
         currency: updated.currency,
         reservedReference: updated.reservedReference,
         completionReference: updated.completionReference,
@@ -1058,6 +1146,8 @@ export async function listWithdrawalsForUser(
       id: true,
       status: true,
       amount: true,
+      fee: true,
+      netAmount: true,
       currency: true,
       method: true,
       destination: true,
@@ -1067,17 +1157,7 @@ export async function listWithdrawalsForUser(
     },
   });
 
-  return rows.map((row) => ({
-    id: row.id,
-    status: row.status,
-    amount: decimal(row.amount),
-    currency: row.currency,
-    method: row.method,
-    destination: row.destination,
-    notes: row.notes,
-    reservedReference: row.reservedReference,
-    createdAt: row.createdAt.toISOString(),
-  }));
+  return rows.map(toWithdrawalSummary);
 }
 
 /** Review queue for deposits, optionally narrowed by status and a free-text search. */
@@ -1170,6 +1250,8 @@ export async function listWithdrawalsForAdmin(
       id: true,
       status: true,
       amount: true,
+      fee: true,
+      netAmount: true,
       currency: true,
       method: true,
       destination: true,
@@ -1187,15 +1269,7 @@ export async function listWithdrawalsForAdmin(
   });
 
   return rows.map((row) => ({
-    id: row.id,
-    status: row.status,
-    amount: decimal(row.amount),
-    currency: row.currency,
-    method: row.method,
-    destination: row.destination,
-    notes: row.notes,
-    reservedReference: row.reservedReference,
-    createdAt: row.createdAt.toISOString(),
+    ...toWithdrawalSummary(row),
     username: row.user.username,
     userEmail: row.user.email,
     reviewedByUserId: row.reviewedByUserId,

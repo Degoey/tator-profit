@@ -11,7 +11,9 @@ import { hashPassword } from "../src/lib/auth/password";
  *  - the same pages must render for a signed-in member (200),
  *  - `/admin` must stay closed for a normal member and open for a SUPER_ADMIN,
  *  - admin APIs must answer 403 for a member session and 200 for a SUPER_ADMIN,
- *  - rendered money must never contain a bare `USD` code or a `$` sign.
+ *  - rendered money must never contain a bare `USD` code or a `$` sign,
+ *  - `/deposit` must serve the BEP-20 wallet QR and address, including for a
+ *    member who has no pending membership yet (empty-state card).
  *
  * Usage: `npm run dev` (in another terminal) then `npm run verify:routes`.
  * Every account it creates is removed again at the end.
@@ -66,7 +68,13 @@ class Session {
   async request(
     path: string,
     init: { method?: string; body?: unknown } = {},
-  ): Promise<{ status: number; location: string | null; text: string; body: any }> {
+  ): Promise<{
+    status: number;
+    location: string | null;
+    contentType: string | null;
+    text: string;
+    body: any;
+  }> {
     const headers: Record<string, string> = { origin: BASE_URL, accept: "text/html,application/json" };
     if (this.cookie) headers.cookie = this.cookie;
     if (init.body !== undefined) headers["content-type"] = "application/json";
@@ -91,7 +99,13 @@ class Session {
       body = null;
     }
 
-    return { status: response.status, location: response.headers.get("location"), text, body };
+    return {
+      status: response.status,
+      location: response.headers.get("location"),
+      contentType: response.headers.get("content-type"),
+      text,
+      body,
+    };
   }
 
   async register(username: string, name: string) {
@@ -245,6 +259,47 @@ async function main() {
     "halaman keamanan menyatakan 2FA belum tersedia tanpa status keamanan palsu",
     securityPage.status === 200 && securityPage.text.includes("Belum tersedia"),
     `status=${securityPage.status}`,
+  );
+
+  // 9. The deposit page always serves the payment QR: the freshly registered
+  // member has no PENDING membership, so this exercises the empty-state card
+  // where the address used to be hidden completely.
+  const depositPage = await member.request("/deposit");
+  const qrAsset = await member.request("/barcode-indodax.png");
+  check(
+    "halaman deposit menampilkan QR dompet BEP-20 beserta alamatnya",
+    depositPage.status === 200 &&
+      depositPage.text.includes("barcode-indodax-container") &&
+      depositPage.text.includes("0xd442e9B62244B8347E1C95ED7098C71AD05a36C7") &&
+      depositPage.text.includes("BEP-20") &&
+      qrAsset.status === 200 &&
+      (qrAsset.contentType ?? "").includes("image/png"),
+    `halaman=${depositPage.status} aset=${qrAsset.status} ${qrAsset.contentType ?? "-"}`,
+  );
+
+  // 10. The withdrawal form offers the same BEP-20 crypto method as the deposit
+  // page: the payout lands on the deposit wallet's network, so a TRC20 label
+  // here would send a member's USDT to the wrong chain.
+  const withdrawalPage = await member.request("/withdrawal");
+  check(
+    "halaman penarikan menawarkan metode kripto BEP-20 tanpa label TRC20",
+    withdrawalPage.status === 200 &&
+      withdrawalPage.text.includes("Kripto (USDT BEP-20)") &&
+      /TRC-?20|TRON/i.test(withdrawalPage.text) === false,
+    `status=${withdrawalPage.status}`,
+  );
+
+  // 11. The deposit QR is public: a visitor who has not created an account yet
+  // must be able to scan the wallet straight from the landing page, with the
+  // same address and the same BEP-20 label as `/deposit`.
+  const landingPage = await new Session("guest").request("/");
+  check(
+    "halaman depan menampilkan QR dompet BEP-20 untuk pengunjung",
+    landingPage.status === 200 &&
+      landingPage.text.includes("barcode-indodax-container") &&
+      landingPage.text.includes("0xd442e9B62244B8347E1C95ED7098C71AD05a36C7") &&
+      landingPage.text.includes("BEP-20"),
+    `halaman=${landingPage.status}`,
   );
 
   const failed = results.filter((row) => !row.ok);

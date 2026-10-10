@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Brand palette. These are the same tokens as `src/app/globals.css` so the
+  launcher icon, the splash window and the web UI cannot drift apart.
+  `tests/android-wrapper.test.ts` fails the build if they do.
+-->
+<resources>
+    <color name="brand_ink">#04070a</color>
+    <color name="brand_ink_soft">#0a1016</color>
+    <color name="brand_ink_card">#0d141b</color>
+    <color name="brand_neon">#2bff9c</color>
+    <color name="brand_neon_dim">#17c476</color>
+    <color name="brand_gold">#f6c453</color>
+</resources>

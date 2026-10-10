@@ -4,10 +4,12 @@ import type { Metadata } from "next";
 import { ProfileForm } from "@/components/profile/profile-form";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { CustomerServiceCard } from "@/components/support/customer-service-card";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
+import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 
@@ -25,6 +27,13 @@ export default async function ProfilePage() {
   const profile = await prisma.profile.findUnique({
     where: { userId: user.id },
     select: { country: true, city: true, timezone: true, bio: true, referralCode: true },
+  });
+
+  // Customer service is WhatsApp-only: the card below opens the chat and nothing about
+  // the conversation is stored inside the application.
+  const customerService = getCustomerServiceConfig({
+    topic: "Akun & keamanan",
+    username: user.username,
   });
 
   return (
@@ -144,6 +153,12 @@ export default async function ProfilePage() {
           Perubahan nomor telepon hanya mengubah data kontak. Nama pengguna dan surel tetap agar
           identitas akun pada buku besar dan jejak audit tidak berubah.
         </Alert>
+
+        <CustomerServiceCard
+          href={customerService.link}
+          location="profil"
+          fallback={customerService.fallback}
+        />
       </main>
 
       <SiteFooter />

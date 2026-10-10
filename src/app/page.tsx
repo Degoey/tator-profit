@@ -1,15 +1,19 @@
 import { ArrowRight, BadgeCheck, CircleDollarSign, Layers, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 
+import { DepositSection } from "@/components/landing/deposit-section";
 import { ReferralSection } from "@/components/landing/referral-section";
 import { TierSection } from "@/components/landing/tier-section";
+import { WithdrawalSection } from "@/components/landing/withdrawal-section";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { WhatsAppCustomerServiceButton } from "@/components/support/whatsapp-cs-button";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PROGRAM_TIER_AMOUNTS } from "@/lib/config/program";
+import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney, formatRate, toDecimal } from "@/lib/money";
 import { getActiveProgram } from "@/lib/program-config";
 import { previewReferralCommissions } from "@/lib/services/program-service";
@@ -53,6 +57,10 @@ export default async function LandingPage() {
     tiers.find((tier) => tier.joinAmount.equals(100))?.joinAmount ?? tiers[0]?.joinAmount ?? null;
   const referralRows = referralBase ? previewReferralCommissions(referralBase) : [];
 
+  // Customer service runs on WhatsApp only: the landing page links out to the chat and
+  // never renders a ticket form, a message box or a conversation history.
+  const customerService = getCustomerServiceConfig({ topic: "Bantuan umum" });
+
   const highlights = [
     {
       icon: CircleDollarSign,
@@ -85,9 +93,9 @@ export default async function LandingPage() {
 
               <div className="space-y-5">
                 <h1 className="text-4xl font-semibold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
-                  Bangun program imbalan Anda dengan struktur yang{" "}
-                  <span className="text-neon">transparan</span> dan{" "}
-                  <span className="text-gold">catatan yang nyata</span>.
+                  Jangan cuma melihat orang lain untung. Mulai bangun{" "}
+                  <span className="text-neon">program imbalan</span> yang{" "}
+                  <span className="text-gold">menghasilkan hari ini</span>
                 </h1>
                 <p className="max-w-xl text-base leading-relaxed text-white/70">
                   Tatorprofit menyimpan setiap akun, profil, program, dan catatan imbalan di database
@@ -109,6 +117,13 @@ export default async function LandingPage() {
                 <Button asChild size="lg" variant="outline">
                   <Link href="/login">Saya sudah punya akun</Link>
                 </Button>
+                <WhatsAppCustomerServiceButton
+                  href={customerService.link}
+                  location="beranda"
+                  fallback={customerService.fallback}
+                  size="lg"
+                  variant="ghost"
+                />
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
@@ -228,6 +243,10 @@ export default async function LandingPage() {
             </Alert>
           </div>
         </section>
+
+        <DepositSection />
+
+        <WithdrawalSection />
 
         <ReferralSection
           rows={referralRows}

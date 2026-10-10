@@ -25,6 +25,9 @@ export function SiteFooter() {
           <Link href="/#tiers" className="transition-colors hover:text-white">
             Pilihan Paket
           </Link>
+          <Link href="/#deposit" className="transition-colors hover:text-white">
+            Setor Dana
+          </Link>
           <Link href="/#program" className="transition-colors hover:text-white">
             Ketentuan Program
           </Link>
@@ -42,6 +45,9 @@ export function SiteFooter() {
           </Link>
           <Link href="/risk-disclosure" className="transition-colors hover:text-white">
             Pengungkapan Risiko
+          </Link>
+          <Link href="/#penarikan" className="transition-colors hover:text-white">
+            Penarikan Dana
           </Link>
           <Link href="/withdrawal-policy" className="transition-colors hover:text-white">
             Kebijakan Penarikan

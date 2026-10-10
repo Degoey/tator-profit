@@ -5,9 +5,9 @@ import Link from "next/link";
 import * as React from "react";
 
 import { FormField } from "@/components/auth/form-field";
+import { NoPrefillInput } from "@/components/auth/no-prefill-input";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 
 export function ForgotPasswordForm() {
   const [email, setEmail] = React.useState("");
@@ -52,7 +52,8 @@ export function ForgotPasswordForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5" noValidate>
+    // Same rule as the other auth forms: no browser pre-fill of personal data.
+    <form onSubmit={handleSubmit} className="space-y-5" autoComplete="off" noValidate>
       {error ? (
         <Alert variant="danger" title="Permintaan gagal">
           {error}
@@ -69,11 +70,11 @@ export function ForgotPasswordForm() {
         htmlFor="email"
         hint="Kami tidak mengungkap apakah surel terdaftar atau tidak (mencegah enumerasi akun)."
       >
-        <Input
+        <NoPrefillInput
           id="email"
           name="email"
           type="email"
-          autoComplete="email"
+          autoComplete="off"
           placeholder="anda@contoh.com"
           value={email}
           onChange={(event) => setEmail(event.target.value)}

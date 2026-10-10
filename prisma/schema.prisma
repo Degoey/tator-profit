@@ -575,10 +575,19 @@ model DepositRequest {
 /// A manual withdrawal request. Submitting reserves the amount
 /// (AVAILABLE -> RESERVED); completing it debits the reservation for good and
 /// rejecting it returns the money to the spendable balance.
+///
+/// `amount` is the gross request (what the member typed), `fee` is the platform
+/// fee (10% of the gross) and `netAmount` is what is actually paid out. The gross
+/// is the single authoritative value reserved, released and settled, so a
+/// withdrawal can never debit a balance twice; the fee is only a breakdown of
+/// that same gross. Rows created before this fee existed have NULL fee/netAmount
+/// and keep their original behaviour (fee 0, net = gross).
 model WithdrawalRequest {
   id                  String           @id @default(uuid()) @db.Uuid
   userId              String           @db.Uuid
   amount              Decimal          @db.Decimal(18, 2)
+  fee                 Decimal?         @db.Decimal(18, 2)
+  netAmount           Decimal?         @db.Decimal(18, 2)
   currency            String           @default("USDT")
   method              String
   destination         String
@@ -593,6 +602,11 @@ model WithdrawalRequest {
   /// Ledger references for the reservation debit/credit pair and the final debit.
   reservedReference   String?          @unique
   completionReference String?          @unique
+  proofStorageKey     String?
+  proofFileName       String?
+  proofMimeType       String?
+  proofSize           Int?
+  idempotencyKey      String?          @db.Uuid
   metadata            Json?
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
@@ -602,4 +616,5 @@ model WithdrawalRequest {
 
   @@index([userId, status])
   @@index([status, createdAt])
+  @@index([userId, idempotencyKey])
 }

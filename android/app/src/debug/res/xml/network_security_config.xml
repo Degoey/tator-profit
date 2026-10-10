@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Debug-only override: allows pointing the wrapper at a plain-HTTP development
+  server, e.g. `http://10.0.2.2:3000/admin` (host machine, as seen from the
+  emulator) or `http://192.168.1.x:3000/admin` (LAN IP, real device).
+
+  This file is not part of a release build; release uses the strict policy in
+  `src/main/res/xml/network_security_config.xml`.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

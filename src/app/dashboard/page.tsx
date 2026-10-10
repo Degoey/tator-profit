@@ -21,11 +21,13 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { TransactionHistory } from "@/components/dashboard/transaction-history";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { WhatsAppCustomerServiceButton } from "@/components/support/whatsapp-cs-button";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/current-user";
 import { REFERRAL_LEVEL_RATES } from "@/lib/config/referral";
+import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney, formatRate } from "@/lib/money";
 import { getActiveProgram } from "@/lib/program-config";
 import { getBalance, listTransactions } from "@/lib/services/ledger-service";
@@ -67,6 +69,13 @@ export default async function DashboardPage({
   ]);
 
   const referral = { directReferrals: network.counts[0] ?? 0, totalNetwork: network.total };
+
+  // WhatsApp is the only customer service channel: the dashboard links to the chat and
+  // stores no ticket, message or conversation history of its own.
+  const customerService = getCustomerServiceConfig({
+    topic: "Bantuan umum",
+    username: user.username,
+  });
   const referralLevels = REFERRAL_LEVEL_RATES.map((entry) => ({
     level: entry.level,
     rate: formatRate(entry.rate),
@@ -221,7 +230,7 @@ export default async function DashboardPage({
           <Button asChild variant="outline" size="sm">
             <Link href="/withdrawal">
               <ArrowUpFromLine aria-hidden />
-              Ajukan penarikan
+              Penarikan dana
             </Link>
           </Button>
           {user.role === "ADMIN" ? (
@@ -232,9 +241,17 @@ export default async function DashboardPage({
               </Link>
             </Button>
           ) : null}
+          <WhatsAppCustomerServiceButton
+            href={customerService.link}
+            location="dasbor"
+            fallback={customerService.fallback}
+            size="sm"
+            variant="ghost"
+          />
           <p className="w-full text-xs leading-relaxed text-white/45 sm:w-auto sm:flex-1">
             Setoran dan penarikan diproses manual oleh admin: tidak ada payment gateway atau
-            transfer otomatis. Saldo hanya berubah setelah admin menyetujui permintaan.
+            transfer otomatis. Penarikan dikenakan biaya 10% dari nominal yang diajukan;
+            Anda menerima 90%. Dana ditahan saat pengajuan dan dikembalikan jika ditolak.
           </p>
         </section>
 

@@ -1,4 +1,4 @@
-import { ShieldCheck } from "lucide-react";
+import { Download, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
@@ -11,14 +11,17 @@ import {
   DEPOSIT_REVIEW_ACTION_VALUES,
   WITHDRAWAL_REVIEW_ACTION_VALUES,
 } from "@/components/payments/review-actions";
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { canAdmin, canReviewDepositAction } from "@/lib/auth/admin-permissions";
 import { requireAdminCapability } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { listAdministrators } from "@/lib/services/admin-role-service";
+import { withdrawalAmounts } from "@/lib/withdrawal-fee";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Administrasi" };
@@ -257,6 +260,13 @@ export default async function AdminPage() {
           {canReadAudit ? "Dapat membaca jejak audit" : "Jejak audit tidak tersedia"}
         </Badge>
         <Badge variant="muted">@{admin.username}</Badge>
+        {/*
+          Offers the installable app to an administrator only, because the
+          manifest start_url is `/admin`. No capability is granted here: the
+          installed window authenticates with the same cookie and the same
+          server-side permission checks.
+        */}
+        <InstallAppButton />
       </section>
 
       <PaymentKpis
@@ -403,33 +413,50 @@ export default async function AdminPage() {
           <CardTitle>Tinjauan penarikan</CardTitle>
           <CardDescription>
             Setujui, mulai proses transfer, tandai selesai, atau tolak permintaan penarikan. Dana
-            ditahan dari saldo tersedia sampai status akhir.
+            ditahan dari saldo tersedia sampai status akhir. Saat menandai selesai Anda dapat
+            melampirkan bukti transfer, dan pengguna menerima 90% (biaya 10%).
           </CardDescription>
+          <div className="mt-3">
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/withdrawals/export?scope=admin">
+                <Download aria-hidden />
+                Ekspor rekap CSV
+              </a>
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <AdminWithdrawalReview
             allowedActions={allowedWithdrawalActions}
-            rows={withdrawals.map((row) => ({
-              id: row.id,
-              amount: row.amount.toFixed(2),
-              currency: row.currency,
-              method: row.method,
-              destination: row.destination,
-              notes: row.notes,
-              status: row.status,
-              rejectionReason: row.rejectionReason,
-              reviewNote: row.reviewNote,
-              userName: row.user.name,
-              userUsername: row.user.username,
-              userEmail: row.user.email,
-              availableAmount: (row.user.balance?.availableAmount ?? 0).toFixed(2),
-              reservedAmount: (row.user.balance?.reservedAmount ?? 0).toFixed(2),
-              createdAt: row.createdAt,
-              reviewedAt: row.reviewedAt,
-              processedAt: row.processedAt,
-              completedAt: row.completedAt,
-              auditHistory: requestAuditByEntityId.get(row.id) ?? [],
-            }))}
+            rows={withdrawals.map((row) => {
+              const amounts = withdrawalAmounts(row);
+              return {
+                id: row.id,
+                amount: row.amount.toFixed(2),
+                fee: amounts.fee,
+                netAmount: amounts.netAmount,
+                currency: row.currency,
+                method: row.method,
+                destination: row.destination,
+                notes: row.notes,
+                status: row.status,
+                rejectionReason: row.rejectionReason,
+                reviewNote: row.reviewNote,
+                userName: row.user.name,
+                userUsername: row.user.username,
+                userEmail: row.user.email,
+                availableAmount: (row.user.balance?.availableAmount ?? 0).toFixed(2),
+                reservedAmount: (row.user.balance?.reservedAmount ?? 0).toFixed(2),
+                createdAt: row.createdAt,
+                reviewedAt: row.reviewedAt,
+                processedAt: row.processedAt,
+                completedAt: row.completedAt,
+                proofFileName: row.proofFileName,
+                proofMimeType: row.proofMimeType,
+                proofSize: row.proofSize,
+                auditHistory: requestAuditByEntityId.get(row.id) ?? [],
+              };
+            })}
           />
         </CardContent>
       </Card>

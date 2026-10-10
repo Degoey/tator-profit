@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import * as React from "react";
 
 import { FormField } from "@/components/auth/form-field";
+import { DepositAddressQr } from "@/components/payments/deposit-address-qr";
 import {
   DEPOSIT_METHODS,
   PAYMENT_REFERENCE_MAX,
@@ -140,11 +141,15 @@ export function DepositForm({ memberships, currency, allBlocked = false }: Depos
           <Button asChild variant="outline">
             <Link href="/programs">Buka halaman program</Link>
           </Button>
+          {/* Tanpa keanggotaan menunggu pun QR dompet tetap tampil: anggota bisa
+              menyiapkan pembayaran lebih dulu. */}
+          <div className="mt-5">
+            <DepositAddressQr />
+          </div>
         </CardContent>
       </Card>
     );
   }
-
 
   return (
     <Card>
@@ -211,8 +216,6 @@ export function DepositForm({ memberships, currency, allBlocked = false }: Depos
             </div>
           </fieldset>
 
-
-
           <div className="grid gap-4 sm:grid-cols-2">
             <FormField
               label="Nilai deposit (terkunci)"
@@ -250,6 +253,8 @@ export function DepositForm({ memberships, currency, allBlocked = false }: Depos
               </select>
             </FormField>
           </div>
+
+          <DepositAddressQr />
 
           <FormField
             label="Referensi pembayaran (opsional)"

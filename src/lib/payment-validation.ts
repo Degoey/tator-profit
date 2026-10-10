@@ -37,6 +37,12 @@ export const withdrawalSchema = z.object({
   method: z.enum(PAYMENT_METHODS, { message: "Pilih metode penarikan yang valid." }),
   destination: z.string().trim().min(1, "Masukkan tujuan penarikan.").max(300, "Tujuan penarikan terlalu panjang."),
   notes: z.string().trim().max(500, "Catatan terlalu panjang.").optional(),
+  /**
+   * Optional client-generated key so a double click cannot create a second
+   * request. The fee is never accepted from the browser: it is derived on the
+   * server from `amount`.
+   */
+  idempotencyKey: z.string().uuid("Kunci idempotensi tidak valid.").optional(),
 });
 
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;
@@ -63,3 +69,12 @@ export const adminWithdrawalActionSchema = z.object({
 });
 
 export type AdminWithdrawalActionInput = z.infer<typeof adminWithdrawalActionSchema>;
+
+/** Optional filters of `GET /api/withdrawals`; both are trimmed and bounded. */
+export const withdrawalListQuerySchema = z.object({
+  status: z.enum(["PENDING", "UNDER_REVIEW", "APPROVED", "PROCESSING", "COMPLETED", "REJECTED"]).optional(),
+  search: z.string().trim().max(120, "Pencarian terlalu panjang.").optional(),
+  take: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+export type WithdrawalListQueryInput = z.infer<typeof withdrawalListQuerySchema>;

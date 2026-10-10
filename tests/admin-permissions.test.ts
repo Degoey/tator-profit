@@ -174,4 +174,54 @@ describe("assertSameOrigin", () => {
     assert.equal(assertSameOrigin(differentPort), false);
     assert.equal(assertSameOrigin(differentScheme), false);
   });
+
+  /**
+   * The dev server reports `request.url` as localhost even when the browser
+   * reached it through the machine's LAN address (phone or emulator WebView).
+   * The Host header carries the authority the client actually addressed.
+   */
+  it("menerima origin yang cocok dengan header Host saat request.url dinormalkan ke localhost", () => {
+    const request = new Request("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { origin: "http://10.0.2.2:3000", host: "10.0.2.2:3000" },
+    });
+
+    assert.equal(assertSameOrigin(request), true);
+  });
+
+  it("tetap menolak origin yang tidak cocok dengan header Host", () => {
+    const crossSite = new Request("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { origin: "https://penyerang.example", host: "10.0.2.2:3000" },
+    });
+    const wrongPort = new Request("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { origin: "http://10.0.2.2:4000", host: "10.0.2.2:3000" },
+    });
+
+    assert.equal(assertSameOrigin(crossSite), false);
+    assert.equal(assertSameOrigin(wrongPort), false);
+  });
+
+  it("menghormati X-Forwarded-Proto saat berada di belakang reverse proxy TLS", () => {
+    const request = new Request("http://app.tatorprofit.id/api/auth/login", {
+      method: "POST",
+      headers: {
+        origin: "https://app.tatorprofit.id",
+        host: "app.tatorprofit.id",
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    assert.equal(assertSameOrigin(request), true);
+  });
+
+  it("kembali ke origin dari request.url bila header Host tidak ada", () => {
+    const request = new Request("http://localhost:3000/api/auth/login", {
+      method: "POST",
+      headers: { origin: "http://localhost:3000" },
+    });
+
+    assert.equal(assertSameOrigin(request), true);
+  });
 });

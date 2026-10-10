@@ -6,11 +6,12 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { statusLabel } from "@/lib/status-labels";
+import { WITHDRAWAL_FEE_LABEL, WITHDRAWAL_FEE_NOTICE } from "@/lib/withdrawal-fee";
 
 export const metadata: Metadata = {
   title: "Kebijakan Penarikan",
   description:
-    "Kebijakan penarikan Tatorprofit dalam USDT: alur status menunggu sampai selesai, saldo ditahan saat pengajuan, satu permintaan terbuka per akun, dan pemrosesan manual oleh admin.",
+    "Kebijakan penarikan Tatorprofit dalam USDT: biaya 10% dari nominal bruto, alur status menunggu sampai selesai, saldo ditahan saat pengajuan, satu permintaan terbuka per akun, dan pemrosesan manual oleh admin.",
 };
 
 /** Withdrawal status flow exactly as implemented by the platform. */
@@ -139,7 +140,31 @@ export default function WithdrawalPolicyPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>4. Diproses manual tanpa gateway otomatis</CardTitle>
+            <CardTitle>4. Biaya penarikan {WITHDRAWAL_FEE_LABEL}</CardTitle>
+            <CardDescription>
+              Biaya {WITHDRAWAL_FEE_LABEL} dihitung dari nominal bruto; sisanya adalah nominal
+              bersih yang diterima.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm leading-relaxed text-white/70">
+            <p>
+              Setiap pengajuan penarikan dikenakan biaya {WITHDRAWAL_FEE_LABEL} dari nominal bruto
+              yang diajukan. Contoh: penarikan 100,00 USDT dikenakan biaya 10,00 USDT sehingga
+              nominal bersih yang diterima adalah 90,00 USDT.
+            </p>
+            <p>
+              Biaya dihitung ulang oleh server dari nominal bruto yang benar-benar diterima, dengan
+              nilai desimal presisi tinggi dan pembulatan yang sama seperti pencatatan saldo. Angka
+              yang tampil pada formulir penarikan hanya pratinjau dan tidak dapat mengubah biaya
+              yang dikenakan.
+            </p>
+            <p className="text-xs text-white/50">{WITHDRAWAL_FEE_NOTICE}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>5. Diproses manual tanpa gateway otomatis</CardTitle>
             <CardDescription>
               Tidak ada transfer otomatis; admin menjalankan pembayaran secara manual.
             </CardDescription>
@@ -164,7 +189,7 @@ export default function WithdrawalPolicyPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>5. Saldo tidak boleh minus</CardTitle>
+            <CardTitle>6. Saldo tidak boleh minus</CardTitle>
             <CardDescription>
               Nilai penarikan tidak dapat melebihi saldo tersedia.
             </CardDescription>
@@ -184,7 +209,7 @@ export default function WithdrawalPolicyPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>6. Penolakan mengembalikan dana</CardTitle>
+            <CardTitle>7. Penolakan mengembalikan dana</CardTitle>
             <CardDescription>
               Dana yang ditolak kembali sepenuhnya ke saldo tersedia Anda.
             </CardDescription>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Info } from "lucide-react";
+import { Download, Info } from "lucide-react";
 import * as React from "react";
 
 import { DataTable, type DataTableColumn } from "@/components/payments/data-table";
@@ -13,7 +13,12 @@ import { formatMoney } from "@/lib/money";
 
 export interface WithdrawalHistoryRow {
   id: string;
+  /** Gross amount requested. */
   amount: string;
+  /** Platform fee (10% of the gross). */
+  fee: string;
+  /** Gross minus fee — the amount actually paid out. */
+  netAmount: string;
   currency: string;
   method: string;
   destination: string;
@@ -21,6 +26,10 @@ export interface WithdrawalHistoryRow {
   status: string;
   rejectionReason: string | null;
   reviewNote: string | null;
+  /** Transfer proof attached by an administrator when the payout was completed. */
+  proofFileName: string | null;
+  proofMimeType: string | null;
+  proofSize: number | null;
   createdAt: Date | string;
   reviewedAt: Date | string | null;
   processedAt: Date | string | null;
@@ -45,9 +54,15 @@ export function WithdrawalHistory({ rows }: { rows: WithdrawalHistoryRow[] }) {
       header: "Nilai",
       sortValue: (row) => Number(row.amount),
       render: (row) => (
-        <span className="font-semibold text-[var(--color-neon)]">
-          {formatMoney(row.amount, row.currency)}
-        </span>
+        <div className="space-y-0.5">
+          <span className="block font-semibold text-[var(--color-neon)]">
+            {formatMoney(row.amount, row.currency)}
+          </span>
+          <span className="block text-[11px] text-white/45">
+            Biaya {formatMoney(row.fee, row.currency)} · diterima{" "}
+            {formatMoney(row.netAmount, row.currency)}
+          </span>
+        </div>
       ),
     },
     {
@@ -130,9 +145,23 @@ export function WithdrawalHistory({ rows }: { rows: WithdrawalHistoryRow[] }) {
         title="Detail penarikan"
         description={detail ? `Diajukan ${formatPaymentDate(detail.createdAt)}` : undefined}
         footer={
-          <Button type="button" variant="ghost" onClick={() => setDetail(null)}>
-            Tutup
-          </Button>
+          <>
+            {detail?.proofFileName ? (
+              <Button asChild variant="outline">
+                <a
+                  href={`/api/withdrawals/${detail.id}/proof`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Download aria-hidden />
+                  Lihat bukti transfer
+                </a>
+              </Button>
+            ) : null}
+            <Button type="button" variant="ghost" onClick={() => setDetail(null)}>
+              Tutup
+            </Button>
+          </>
         }
       >
         {detail ? (
@@ -141,6 +170,14 @@ export function WithdrawalHistory({ rows }: { rows: WithdrawalHistoryRow[] }) {
               label="Nilai penarikan"
               value={formatMoney(detail.amount, detail.currency)}
               accent
+            />
+            <DetailRow
+              label="Biaya penarikan (10%)"
+              value={formatMoney(detail.fee, detail.currency)}
+            />
+            <DetailRow
+              label="Nominal bersih diterima"
+              value={formatMoney(detail.netAmount, detail.currency)}
             />
             <DetailRow label="Metode" value={optionLabel(WITHDRAWAL_METHODS, detail.method)} />
             <DetailRow label="Tujuan" value={detail.destination} />
@@ -172,6 +209,20 @@ export function WithdrawalHistory({ rows }: { rows: WithdrawalHistoryRow[] }) {
                   Catatan admin
                 </p>
                 <p className="mt-1 text-sm text-white/75">{detail.reviewNote}</p>
+              </div>
+            ) : null}
+            {detail.proofFileName ? (
+              <div className="rounded-xl border border-[var(--color-neon)]/25 bg-[var(--color-neon)]/[0.06] p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--color-neon)]">
+                  Bukti transfer dari admin
+                </p>
+                <p className="mt-1 text-sm text-white/75">
+                  {detail.proofFileName}
+                  {detail.proofSize ? ` · ${(detail.proofSize / 1024).toFixed(0)} KB` : ""}
+                </p>
+                <p className="mt-1 text-xs text-white/45">
+                  Berkas disimpan privat dan hanya dapat dibuka oleh Anda dan admin berizin.
+                </p>
               </div>
             ) : null}
           </dl>

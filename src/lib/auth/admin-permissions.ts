@@ -13,7 +13,9 @@ import type { AdminRole } from "@prisma/client";
  *    reject or credit;
  *  - SUPPORT may read the queues so it can answer members, nothing more;
  *  - VIEWER is read-only and does not even open private payment proofs;
- *  - the audit trail is limited to SUPER_ADMIN, FINANCE and COMPLIANCE.
+ *  - the audit trail and the anti-fraud queue are limited to SUPER_ADMIN,
+ *    FINANCE and COMPLIANCE, and only SUPER_ADMIN/COMPLIANCE may close a
+ *    fraud case (`reviewFraud`); FINANCE may read it but never decide it.
  */
 export type AdminPermission =
   | "read"
@@ -23,7 +25,9 @@ export type AdminPermission =
   | "reviewWithdrawal"
   | "manageFinance"
   | "creditBalance"
-  | "manageUsers";
+  | "manageUsers"
+  | "readFraud"
+  | "reviewFraud";
 
 export const ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "read",
@@ -34,6 +38,8 @@ export const ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "manageFinance",
   "creditBalance",
   "manageUsers",
+  "readFraud",
+  "reviewFraud",
 ];
 
 export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
@@ -46,8 +52,9 @@ export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[
     "reviewWithdrawal",
     "manageFinance",
     "creditBalance",
+    "readFraud",
   ],
-  COMPLIANCE: ["read", "readProof", "readAudit"],
+  COMPLIANCE: ["read", "readProof", "readAudit", "readFraud", "reviewFraud"],
   SUPPORT: ["read", "readProof"],
   VIEWER: ["read"],
 };

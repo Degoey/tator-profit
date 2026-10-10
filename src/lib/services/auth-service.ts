@@ -3,7 +3,9 @@ import { Prisma } from "@prisma/client";
 import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { generateOpaqueToken, hashToken } from "@/lib/auth/tokens";
 import { PROGRAM_CURRENCY } from "@/lib/config/program";
+import { trustedIpAddress } from "@/lib/config/anti-fraud";
 import { prisma } from "@/lib/prisma";
+import { flagRegistrationInTransaction } from "@/lib/services/anti-fraud-service";
 import { recordAuditLog, recordSecurityEvent, type RequestMeta } from "@/lib/security";
 import {
   createReferral,
@@ -103,6 +105,7 @@ export async function registerUser(
           phone: input.phone,
           bankAccountNumber: input.bankAccountNumber,
           bank: input.bank,
+          registrationIp: trustedIpAddress(meta),
           passwordHash,
           role: "USER",
           status: "ACTIVE",
@@ -131,6 +134,20 @@ export async function registerUser(
           codeUsed: referralCodeUsed,
         });
       }
+
+      /**
+       * Anti-fraud screening runs inside the same transaction as the account and
+       * its referral row, so a flagged account and its review case commit
+       * together. It only opens a case for a human: nothing is blocked or
+       * reversed here.
+       */
+      await flagRegistrationInTransaction(tx, {
+        userId: user.id,
+        bank: input.bank,
+        bankAccountNumber: input.bankAccountNumber,
+        referrerId,
+        meta,
+      });
 
       await tx.notification.create({
         data: {

@@ -249,6 +249,21 @@ export const rebateConfigUpdateSchema = z.object({
 
 export type RebateConfigUpdateInput = z.infer<typeof rebateConfigUpdateSchema>;
 
+/**
+ * Closing one anti-fraud case. The decision is limited to the two terminal
+ * states and the note is mandatory, so a case can never be closed silently.
+ */
+export const fraudReviewSchema = z.object({
+  caseId: z.string().uuid("Kasus tinjauan tidak valid."),
+  decision: z.enum(["CLEARED", "CONFIRMED"], { message: "Pilih keputusan tinjauan." }),
+  note: z
+    .string()
+    .trim()
+    .min(10, "Tuliskan alasan minimal 10 karakter.")
+    .max(500, "Alasan maksimal 500 karakter."),
+});
+
+export type FraudReviewInput = z.infer<typeof fraudReviewSchema>;
 
 /** Flattens a Zod error into a `{ field: message }` map for form rendering. */
 export function flattenZodError(error: z.ZodError): Record<string, string> {

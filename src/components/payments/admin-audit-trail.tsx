@@ -28,6 +28,7 @@ const ACTION_GROUPS = [
   { value: "program.", label: "Program" },
   { value: "reward.", label: "Imbalan" },
   { value: "admin.", label: "Administrasi" },
+  { value: "fraud.", label: "Anti-fraud" },
 ];
 
 function snapshot(value: unknown): string {

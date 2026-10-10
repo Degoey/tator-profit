@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Layers,
   Receipt,
+  ShieldAlert,
   ShieldCheck,
   Wallet,
 } from "lucide-react";
@@ -15,13 +16,21 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { cn } from "@/lib/utils";
 
-export type PaymentSection = "/deposit" | "/withdrawal" | "/admin" | "/rewards" | "/transactions";
+export type PaymentSection =
+  | "/deposit"
+  | "/withdrawal"
+  | "/admin"
+  | "/fraud-review"
+  | "/rewards"
+  | "/transactions";
 
 export interface PaymentShellProps {
   active: PaymentSection;
   title: string;
   description: string;
   isAdmin?: boolean;
+  /** Renders the anti-fraud queue link; only administrators with `readFraud` set it. */
+  showFraudReview?: boolean;
   children: ReactNode;
 }
 
@@ -34,6 +43,7 @@ export function PaymentShell({
   title,
   description,
   isAdmin = false,
+  showFraudReview = false,
   children,
 }: PaymentShellProps) {
   const links: { href: string; label: string; icon: typeof Wallet }[] = [
@@ -47,6 +57,10 @@ export function PaymentShell({
 
   if (isAdmin) {
     links.push({ href: "/admin", label: "Administrasi", icon: ShieldCheck });
+  }
+
+  if (showFraudReview) {
+    links.push({ href: "/fraud-review", label: "Tinjauan Anti-Fraud", icon: ShieldAlert });
   }
 
   return (

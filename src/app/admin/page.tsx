@@ -22,6 +22,7 @@ import { requireAdminCapability } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { listAdministrators } from "@/lib/services/admin-role-service";
+import { countOpenFraudCases } from "@/lib/services/anti-fraud-service";
 import { listRebateConfig } from "@/lib/services/rebate-config-service";
 import { withdrawalAmounts } from "@/lib/withdrawal-fee";
 
@@ -56,6 +57,8 @@ export default async function AdminPage() {
   const canManageUsers = canAdmin(admin.adminRole, "manageUsers");
   /** Rebate percentages are editable by SUPER_ADMIN/FINANCE (`manageFinance`). */
   const canManageRebate = canAdmin(admin.adminRole, "manageFinance");
+  /** The anti-fraud queue is readable by SUPER_ADMIN/FINANCE/COMPLIANCE. */
+  const canReadFraud = canAdmin(admin.adminRole, "readFraud");
 
   /**
    * Capabilities are decided on the server, per action: FINANCE/SUPER_ADMIN may
@@ -136,6 +139,8 @@ export default async function AdminPage() {
   const administrators = canManageUsers ? await listAdministrators() : [];
   /** The shared rebate configuration; every administrator may read it. */
   const rebateConfig = await listRebateConfig();
+  /** Open anti-fraud cases; children of `readFraud` never load the counter. */
+  const openFraudCases = canReadFraud ? await countOpenFraudCases() : 0;
   const requestAuditEntries = canReadAudit
     ? await prisma.auditLog.findMany({
         where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
@@ -243,6 +248,7 @@ export default async function AdminPage() {
     <PaymentShell
       active="/admin"
       isAdmin
+      showFraudReview={canReadFraud}
       title="Administrasi keuangan"
       description="Tinjau deposit dan penarikan manual, pantau indikator nyata dari database, dan periksa jejak audit. Setiap tindakan tercatat dengan aktor dan waktu."
     >
@@ -264,6 +270,9 @@ export default async function AdminPage() {
         <CreditPermissionNote allowed={canCredit} />
         <Badge variant={canReadAudit ? "default" : "muted"}>
           {canReadAudit ? "Dapat membaca jejak audit" : "Jejak audit tidak tersedia"}
+        </Badge>
+        <Badge variant={canReadFraud ? "default" : "muted"}>
+          {canReadFraud ? "Dapat membaca antrean anti-fraud" : "Anti-fraud tidak tersedia"}
         </Badge>
         <Badge variant="muted">@{admin.username}</Badge>
         {/*
@@ -312,6 +321,16 @@ export default async function AdminPage() {
             value: String(commissionsTotal),
             hint: `Dibayar ${formatMoney(commissionsPaidSum._sum.commissionAmount ?? 0)}`,
           },
+          ...(canReadFraud
+            ? [
+                {
+                  label: "Kasus anti-fraud terbuka",
+                  value: String(openFraudCases),
+                  tone: "danger" as const,
+                  hint: "Sinyal multi-akun menunggu tinjauan manusia",
+                },
+              ]
+            : []),
         ]}
       />
 

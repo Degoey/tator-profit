@@ -28,6 +28,7 @@ const EVENT_LABELS: Record<string, string> = {
   PASSWORD_CHANGED: "Kata sandi diubah",
   SESSION_REVOKED: "Sesi dicabut",
   RATE_LIMITED: "Permintaan dibatasi",
+  FRAUD_FLAGGED: "Sinyal anti-fraud terdeteksi",
 };
 
 const SEVERITY_VARIANTS: Record<string, "default" | "gold" | "muted" | "danger"> = {

@@ -130,8 +130,12 @@ lebih dulu:
    Bahasa Indonesia, tetapi belum ditinjau penasihat hukum.
 3. **KYC/AML.** Belum ada verifikasi identitas, penyaringan sanksi, atau pemantauan
    transaksi mencurigakan.
-4. **Pencegahan penipuan.** Belum ada deteksi multi-akun, penyalahgunaan rujukan, atau
-   analisis pola anomali.
+4. **Pencegahan penipuan.** Sudah ada deteksi awal multi-akun dan penyalahgunaan rujukan
+   saat pendaftaran (Bagian 13, lihat `docs/anti-fraud-multi-account.md`): nomor rekening
+   yang dipakai berulang, beberapa pendaftaran dari satu alamat IP, kecocokan IP/rekening
+   dengan perujuk, dan lonjakan pendaftaran lewat satu perujuk. Deteksi ini hanya
+   **menandai untuk ditinjau manusia** — belum ada analisis pola anomali historis,
+   penyaringan perangkat, pencocokan identitas, atau tindakan otomatis atas komisi.
 5. **Infrastruktur produksi.** Belum ada konfigurasi TLS/HSTS/CSP, WAF, pembatasan
    jaringan database, atau pemisahan lingkungan yang terverifikasi.
 6. **Pengelolaan secret.** Diperlukan penyimpanan secret terkelola (bukan berkas

@@ -21,14 +21,18 @@ baru tidak punya kemampuan finansial sampai diberikan secara eksplisit (fail clo
 | `manageFinance` (program/imbalan) | ya | ya | tidak | tidak | tidak |
 | `creditBalance` (kredit saldo) | ya | ya | tidak | tidak | tidak |
 | `manageUsers` (ubah peran admin) | ya | tidak | tidak | tidak | tidak |
+| `readFraud` (antrean anti-fraud) | ya | ya | ya | tidak | tidak |
+| `reviewFraud` (putuskan kasus anti-fraud) | ya | **tidak** | ya | tidak | tidak |
 
 ¹ COMPLIANCE boleh memindahkan setoran ke `UNDER_REVIEW` atau `FLAGGED` saja
 (`canReviewDepositAction`); menyetujui/menolak uang tetap milik SUPER_ADMIN/FINANCE.
 
 VIEWER hanya-baca: tidak boleh mengubah status, tidak boleh memberi kredit, dan tidak
-membuka berkas bukti pembayaran. Jejak audit dibatasi pada SUPER_ADMIN, FINANCE, dan
-COMPLIANCE — role lain bahkan tidak memuat barisnya di server, jadi tidak ada kebocoran
-lewat payload yang dirender.
+membuka berkas bukti pembayaran. Jejak audit dan antrean anti-fraud dibatasi pada
+SUPER_ADMIN, FINANCE, dan COMPLIANCE — role lain bahkan tidak memuat barisnya di server,
+jadi tidak ada kebocoran lewat payload yang dirender. FINANCE boleh **membaca** antrean
+anti-fraud untuk menilai risiko uang yang akan cair, tetapi tidak boleh menutup kasus
+(`reviewFraud` hanya SUPER_ADMIN dan COMPLIANCE).
 
 ## 2. Kredit saldo administrator (Tahap 3)
 
@@ -134,6 +138,17 @@ generasi 1..5. Satu konfigurasi (`src/lib/rebate-config.ts`) dipakai bersama ole
 member (`/dashboard`), tabel admin, dan mesin perhitungan komisi
 (`postReferralCommissionsForTransaction`), sehingga ketiganya selalu menampilkan angka yang
 sama. Keterangan "bukan jaminan nominal penghasilan" tampil pada kartu member.
+
+## 6c. Antrean tinjauan anti-fraud (Bagian 13)
+
+Halaman `/fraud-review` menampilkan kasus yang dibuka oleh pendeteksi multi-akun. Ia dijaga
+`requireAdminCapability("readFraud")` di server; SUPPORT dan VIEWER dialihkan. Tombol
+keputusan hanya dirender untuk `reviewFraud` (SUPER_ADMIN dan COMPLIANCE), dan keputusan
+itu divalidasi ulang di server (`validateFraudDecision` + `reviewFraudCase`) sehingga peran
+lain tidak dapat memakainya lewat `/api/admin/fraud`. Setiap keputusan wajib berisi alasan
+tertulis dan menghasilkan satu baris `AuditLog` (`fraud.review.cleared` /
+`fraud.review.confirmed`). Rincian sinyal dan batasnya ada di
+`docs/anti-fraud-multi-account.md`.
 
 ## 7. Halaman akun dan kebijakan (Bagian 7/7)
 

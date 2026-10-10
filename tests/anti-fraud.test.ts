@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
-import { PrismaClient } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 
 import { canAdmin } from "../src/lib/auth/admin-permissions";
 import {
@@ -35,7 +35,7 @@ import { registerUser } from "../src/lib/services/auth-service";
  * database, alur pendaftaran nyata, batas izin peran, dan janji keamanan bahwa
  * pendeteksi ini tidak pernah memindahkan uang.
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const ROOT = process.cwd();
 const meta = { ipAddress: "203.0.113.9", userAgent: "node-test" };
 const stamp = `${Date.now()}`.slice(-7);

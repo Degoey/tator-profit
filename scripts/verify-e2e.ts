@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 
+import { assertNotProduction } from "../src/lib/config/maintenance-guard";
 import { verifyBalanceInvariant } from "../src/lib/services/ledger-service";
 
 /**
@@ -132,6 +133,8 @@ async function request(
 }
 
 async function main() {
+  assertNotProduction(process.env, "Verifikasi E2E");
+
   const alice = {
     name: "Alice Verifier",
     username: `alice_${stamp}`,

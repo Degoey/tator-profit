@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 
 import { generateOpaqueToken, hashToken } from "@/lib/auth/tokens";
+import { isProductionLikeEnvironment } from "@/lib/config/production-environment";
 import { prisma } from "@/lib/prisma";
 
 export const SESSION_COOKIE_NAME = "tatorprofit_session";
@@ -44,7 +45,12 @@ export async function createSession(
     value: token,
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    /**
+     * Staging juga disajikan lewat HTTPS, jadi ia harus menandai cookie sebagai
+     * `Secure` persis seperti produksi — sebelumnya hanya `NODE_ENV=production`
+     * yang melakukannya.
+     */
+    secure: isProductionLikeEnvironment(process.env),
     path: "/",
     expires: expiresAt,
   });

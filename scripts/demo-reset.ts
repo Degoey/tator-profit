@@ -1,5 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
+import { assertConfirmed, assertNotProduction } from "../src/lib/config/maintenance-guard";
+
 /**
  * Removes the accounts created by `npm run demo:local` together with their
  * memberships, rewards, ledger entries and balances.
@@ -8,12 +10,24 @@ import { PrismaClient } from "@prisma/client";
  * opts in to the documented maintenance escape hatch for its own transaction:
  * `SET LOCAL tatorprofit.allow_ledger_purge = 'on'`. Nothing else in the app
  * ever sets it.
+ *
+ * Usage: `npm run demo:reset -- --confirm`
+ *
+ * Refuses to run when `NODE_ENV=production` and refuses to run without
+ * `--confirm`: deleting accounts and bypassing the ledger trigger must never
+ * happen by accident. Demo accounts are deleted, never re-labelled as real ones.
  */
 const DEMO_USERNAMES = ["demo_member", "demo_admin"];
 
 const prisma = new PrismaClient();
 
 async function main() {
+  assertNotProduction(process.env, "Atur ulang demo");
+  assertConfirmed(
+    process.argv.slice(2),
+    "jalankan `npm run demo:reset -- --confirm` untuk menghapus akun demo beserta ledger-nya.",
+  );
+
   const users = await prisma.user.findMany({
     where: { username: { in: DEMO_USERNAMES } },
     select: { id: true, username: true },

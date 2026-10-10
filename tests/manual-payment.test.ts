@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 
-import { Prisma, PrismaClient, type AdminRole } from "@prisma/client";
+import { Prisma, type AdminRole } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 
 import { getBalance, postLedgerEntry, verifyBalanceInvariant } from "../src/lib/services/ledger-service";
 import { joinProgramTier } from "../src/lib/services/program-service";
@@ -24,7 +25,7 @@ import {
  * everything again (the append-only trigger protects ledger rows, so the teardown
  * unlocks the purge for its own transaction only).
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const stamp = `${Date.now()}`.slice(-7);
 const meta = { ipAddress: "198.18.9.9", userAgent: "node-test-manual-payment" };
 const joinAmount = new Prisma.Decimal("100.00");

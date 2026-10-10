@@ -1,6 +1,7 @@
 import { PrismaClient, type AdminRole } from "@prisma/client";
 
 import { hashPassword } from "../src/lib/auth/password";
+import { assertNotProduction } from "../src/lib/config/maintenance-guard";
 
 /**
  * Prepares a local demo dataset for the Tatorprofit program engine.
@@ -182,6 +183,8 @@ async function ensureAccount(account: DemoAccount): Promise<Jar> {
 }
 
 async function main() {
+  assertNotProduction(process.env, "Data demo");
+
   const health = await fetch(`${BASE_URL}/programs`).catch(() => null);
   if (!health || !health.ok) {
     throw new Error(`Tidak dapat menjangkau ${BASE_URL}. Jalankan aplikasi dengan: npm run dev`);

@@ -3,7 +3,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -24,7 +25,7 @@ import {
  * Konfigurasi rabat lima generasi: validasi murni, penyimpanan database dengan
  * audit, integrasi mesin perhitungan, dan render tabel member.
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const meta = { ipAddress: "198.18.8.9", userAgent: "node-test" };
 const DEFAULT_RATES = ["0.1000", "0.0200", "0.0100", "0.0100", "0.0100"];
 

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 
-import { Prisma, PrismaClient, type AdminRole } from "@prisma/client";
+import { Prisma, type AdminRole } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 
 import { AdminCreditError, creditBalanceByAdmin } from "../src/lib/services/admin-credit-service";
 import { postLedgerEntry, verifyBalanceInvariant } from "../src/lib/services/ledger-service";
@@ -12,7 +13,7 @@ import { postLedgerEntry, verifyBalanceInvariant } from "../src/lib/services/led
  * are checked together, because the whole point of the feature is that money can
  * only move through those three in one transaction.
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const stamp = `${Date.now()}`.slice(-7);
 const meta = { ipAddress: "198.18.9.9", userAgent: "node-test" };
 

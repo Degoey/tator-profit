@@ -1,7 +1,22 @@
 import type { Prisma, SecurityEventType, SecuritySeverity } from "@prisma/client";
 import { headers } from "next/headers";
 
+import {
+  AUDIT_LOG_FAILURE_MARKER,
+  SECURITY_EVENT_FAILURE_MARKER,
+  describeAuditLogFailure,
+  describeSecurityEventFailure,
+} from "@/lib/config/failure-notices";
 import { prisma } from "@/lib/prisma";
+
+/**
+ * Jejak audit yang gagal ditulis tidak boleh menggagalkan permintaan pengguna, jadi
+ * kegagalannya tetap ditelan — tetapi tidak boleh hilang tanpa jejak: penanda yang
+ * dicari operator di log disediakan bersama keterangannya oleh
+ * `src/lib/config/failure-notices.ts` (risiko terbuka nomor 2 di
+ * `docs/security-audit-and-production-readiness.md`).
+ */
+export { AUDIT_LOG_FAILURE_MARKER, SECURITY_EVENT_FAILURE_MARKER };
 
 export interface RequestMeta {
   ipAddress: string | null;
@@ -55,7 +70,7 @@ export async function recordSecurityEvent(input: SecurityEventInput): Promise<vo
       },
     });
   } catch (error) {
-    console.error("Gagal mencatat peristiwa keamanan", error);
+    console.error(describeSecurityEventFailure(input), error);
   }
 }
 
@@ -90,6 +105,6 @@ export async function recordAuditLog(input: AuditLogInput): Promise<void> {
       },
     });
   } catch (error) {
-    console.error("Gagal mencatat log audit", error);
+    console.error(describeAuditLogFailure(input), error);
   }
 }

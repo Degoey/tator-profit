@@ -63,11 +63,35 @@ pemeriksaan manual berbasis pembacaan kode dan pengujian yang tersedia; audit in
    teks kontras rendah dinaikkan agar terbaca.
 
 
+## 2b. Perbaikan lanjutan (Bagian 8)
+
+Pemeriksaan lanjutan sebelum produksi menemukan bahwa "produksi" didefinisikan terlalu
+sempit: beberapa pengaman hanya berlaku untuk `NODE_ENV=production`, padahal staging
+juga menyajikan aplikasi lewat HTTPS ke pengguna nyata.
+
+9. **Staging diperlakukan seperti produksi** (`src/lib/config/production-environment.ts`).
+   Sebelumnya `AUTH_TOKEN_SECRET` hanya wajib di produksi, sehingga staging dapat
+   berjalan dengan secret pengembangan yang tertulis di repositori ini — artinya hash
+   sesi dan token reset dapat dihitung siapa pun yang membaca kode. Cookie sesi juga
+   hanya ditandai `Secure` di produksi. *Perbaikan:* satu modul aturan menetapkan
+   lingkungan "seperti produksi" (produksi dan staging); `src/lib/auth/tokens.ts`
+   memakai `resolveTokenSecret()` (blok pemeriksaan ganda yang lama sekaligus dihapus),
+   `src/lib/auth/session.ts` memakai `isProductionLikeEnvironment()` untuk cookie
+   `Secure`, dan `assertNotProduction` kini menolak staging sehingga skrip pemeliharaan —
+   yang menghapus akun demo dan melewati proteksi ledger — tidak dapat dijalankan di
+   sana.
+10. **Kegagalan jejak audit kini dapat ditelusuri** (`src/lib/config/failure-notices.ts`).
+    Kegagalan penulisan jejak tetap ditelan supaya permintaan pengguna tidak ikut gagal,
+    tetapi tidak lagi hilang tanpa jejak: setiap kegagalan menulis satu baris berpenanda
+    stabil (`[audit-log-failure]` / `[security-event-failure]`) berisi aksi, entitas,
+    pelaku, jenis peristiwa, dan tingkat keparahannya — tanpa data sensitif — sehingga
+    operator dapat mencari, memberi alert, dan memasukkan kembali catatan yang hilang.
+
 ## 3. Kontrol yang diverifikasi sudah benar
 
 - Kata sandi di-hash bcrypt (12 salt rounds); hash tidak pernah dikembalikan API.
 - Sesi disimpan di database dengan token acak 256-bit; hanya HMAC-SHA256 dari token
-  yang disimpan; cookie `httpOnly`, `SameSite=Lax`, `Secure` di produksi.
+  yang disimpan; cookie `httpOnly`, `SameSite=Lax`, `Secure` di produksi dan staging.
 - Reset kata sandi mencabut seluruh sesi dan token hanya sekali pakai.
 - Peran admin dibaca ulang dari database **di dalam** transaksi finansial; peran null
   gagal tertutup (fail closed); SUPER_ADMIN tidak dapat menurunkan dirinya sendiri.
@@ -90,6 +114,12 @@ pemeriksaan manual berbasis pembacaan kode dan pengujian yang tersedia; audit in
   berparameter (halaman `/admin` dan `/security`).
 - Tidak ada `dangerouslySetInnerHTML`; tidak ada rahasia di dalam repositori
   (`.env` diabaikan Git, `storage/` di luar direktori publik).
+- Pemisahan database pengujian: suite hanya boleh berjalan di database uji terpisah.
+  `npm test` (via `scripts/run-tests.ts`) menolak database aplikasi, menolak
+  `NODE_ENV=production`, lalu mengalihkan `DATABASE_URL` ke `TEST_DATABASE_URL`
+  sebelum proses uji dimuat sehingga singleton Prisma aplikasi pun hanya melihat
+  database uji. Skrip demo/verifikasi berhenti sendiri di produksi **dan** staging, dan
+  `demo:reset` menolak berjalan tanpa `--confirm`. Rinciannya ada di `docs/test-database-isolation.md`.
 
 
 ## 4. Batas audit ini
@@ -108,14 +138,20 @@ Risiko teknis yang masih terbuka:
 
 1. Rate limiter tersimpan di memori satu proses; untuk beberapa instans diperlukan
    penyimpanan bersama (mis. Redis) agar batasnya benar-benar global.
-2. `recordSecurityEvent`/`recordAuditLog` menelan kegagalan penulisan, sehingga
-   peristiwa di luar transaksi dapat hilang tanpa terlihat. Audit di dalam transaksi
-   finansial tidak terpengaruh.
+2. `recordSecurityEvent`/`recordAuditLog` tetap tidak menggagalkan permintaan ketika
+   penulisannya gagal (disengaja), dan belum ada antrean maupun percobaan ulang
+   otomatis — pemulihannya masih butuh manusia. Sejak Bagian 8 setiap kegagalan menulis
+   baris berpenanda `[audit-log-failure]` / `[security-event-failure]` beserta aksi,
+   entitas, dan pelakunya (`src/lib/config/failure-notices.ts`), sehingga kegagalannya
+   dapat dicari dan dijadikan dasar alert. Audit di dalam transaksi finansial tidak
+   terpengaruh.
 3. Header CSP dan HSTS untuk halaman HTML belum dipasang (diputuskan sebagai tanggung
    jawab lapisan deployment, lihat `next.config.ts`).
-4. `AUTH_TOKEN_SECRET` masih memiliki nilai pengembangan bawaan saat tidak
-   dikonfigurasi di luar produksi. Produksi menolak berjalan tanpa secret minimal 32
-   karakter; staging harus diperlakukan sama ketatnya.
+4. `AUTH_TOKEN_SECRET` sudah wajib (minimal 32 karakter) di produksi **dan** staging
+   sejak Bagian 8 — aturannya ada di `src/lib/config/production-environment.ts` dan
+   dipakai `src/lib/auth/tokens.ts`. Yang masih terbuka: di luar lingkungan seperti
+   produksi nilai pengembangan bawaan tetap dipakai (supaya `npm run dev` dan pengujian
+   sederhana), dan secret-nya masih dibaca dari berkas `.env` (lihat butir 6 di bawah).
 
 
 ## 5. Kesiapan produksi: yang masih harus dipenuhi
@@ -136,14 +172,20 @@ lebih dulu:
    dengan perujuk, dan lonjakan pendaftaran lewat satu perujuk. Deteksi ini hanya
    **menandai untuk ditinjau manusia** — belum ada analisis pola anomali historis,
    penyaringan perangkat, pencocokan identitas, atau tindakan otomatis atas komisi.
-5. **Infrastruktur produksi.** Belum ada konfigurasi TLS/HSTS/CSP, WAF, pembatasan
-   jaringan database, atau pemisahan lingkungan yang terverifikasi.
+5. **Infrastruktur produksi.** Belum ada konfigurasi TLS/HSTS/CSP, WAF, atau
+   pembatasan jaringan database. Pemisahan database pengujian **sudah** tersedia dan
+   ditegakkan oleh runner (`TEST_DATABASE_URL`, `npm run db:test:setup`, lihat
+   `docs/test-database-isolation.md`), tetapi pemisahan kredensial per lingkungan di
+   tingkat infrastruktur (akun database berbeda, hak akses terbatas) masih harus
+   disiapkan oleh operator.
 6. **Pengelolaan secret.** Diperlukan penyimpanan secret terkelola (bukan berkas
    `.env`), rotasi berkala, dan pemisahan kunci per lingkungan.
 7. **Backup dan pemulihan.** Backup manual sudah tersedia (lihat laporan tahap 6/7);
    belum ada backup terjadwal, retensi, atau uji pemulihan berkala.
 8. **Monitoring dan penanganan insiden.** Belum ada metrik, alert, atau prosedur
-   eskalasi.
+   eskalasi. Titik awal yang sudah tersedia: setiap kegagalan penulisan jejak audit
+   menulis baris berpenanda stabil (`[audit-log-failure]` /
+   `[security-event-failure]`, lihat §2b) yang dapat dijadikan dasar alert.
 9. **Privasi dan pengelolaan data.** Belum ada alur resmi untuk permintaan ekspor dan
    penghapusan data pengguna.
 10. **Pengujian keamanan lanjutan.** Diperlukan pengujian penetrasi independen dan audit

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 
 import {
   PROGRAM_COMBINATION_COUNT,
@@ -30,7 +31,7 @@ import { approveReward, generateWeeklyRewards, payReward } from "../src/lib/serv
  *  - the ledger stays balanced after joining, paying a reward and querying the
  *    balance, and every amount is USDT.
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const stamp = `${Date.now()}`.slice(-7);
 const meta = { ipAddress: "198.18.10.10", userAgent: "node-test-combinations" };
 

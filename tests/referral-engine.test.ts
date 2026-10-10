@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 
 import { getBalance } from "../src/lib/services/ledger-service";
 import { activateUserProgram, joinProgramTier } from "../src/lib/services/program-service";
@@ -27,7 +28,7 @@ import {
  * the append-only ledger entries (the purge flag is scoped to its own
  * transaction).
  */
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 const stamp = `${Date.now()}`.slice(-7);
 const meta = { ipAddress: "198.18.8.8", userAgent: "node-test" };
 

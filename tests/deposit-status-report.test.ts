@@ -19,7 +19,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { createTestPrismaClient } from "./helpers/prisma";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -42,7 +43,7 @@ function json(value: unknown): Prisma.JsonValue {
   return value as Prisma.JsonValue;
 }
 
-const prisma = new PrismaClient();
+const prisma = createTestPrismaClient();
 let userId = "";
 
 before(async () => {

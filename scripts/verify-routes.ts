@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 import { hashPassword } from "../src/lib/auth/password";
+import { assertNotProduction } from "../src/lib/config/maintenance-guard";
 
 /**
  * Route and authorization verification (Bagian 7/7).
@@ -125,6 +126,8 @@ class Session {
 }
 
 async function main() {
+  assertNotProduction(process.env, "Verifikasi route");
+
   const member = new Session("member");
   const memberUsername = `route_member_${stamp}`;
   const memberRegistration = await member.register(memberUsername, "Route Member");

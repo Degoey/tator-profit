@@ -1,5 +1,6 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 
+import { assertNotProduction } from "../src/lib/config/maintenance-guard";
 import { deleteProofFile } from "../src/lib/payment-proof";
 import { postLedgerEntry, verifyBalanceInvariant } from "../src/lib/services/ledger-service";
 
@@ -132,6 +133,8 @@ async function balanceOf(userId: string) {
   };
 }
 async function main() {
+  assertNotProduction(process.env, "Verifikasi alur pembayaran");
+
   const reachable = await fetch(`${BASE_URL}/login`).catch(() => null);
   check(
     "server aplikasi dapat dijangkau",

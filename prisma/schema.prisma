@@ -500,6 +500,9 @@ model User {
   username        String     @unique
   email           String     @unique
   phone           String     @unique
+  /// Nomor rekening pendaftar untuk kebutuhan pembayaran/penarikan.
+  /// Disimpan sebagai String agar angka nol di depan tetap terjaga.
+  bankAccountNumber String?
   passwordHash    String
   role            UserRole   @default(USER)
   /// Admin capability level; null means "may sign in to /admin but may do nothing".

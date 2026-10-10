@@ -8,6 +8,7 @@ const validRegistration = {
   username: "Budi_01",
   email: "Budi@Example.COM",
   phone: "+628123456789",
+  bankAccountNumber: "0123456789",
   password: "Tator12345",
   acceptTerms: true,
 };
@@ -63,6 +64,19 @@ describe("registerSchema", () => {
     const noConsent = registerSchema.safeParse({ ...validRegistration, acceptTerms: false });
     assert.equal(noConsent.success, false);
     assert.ok(noConsent.error?.issues.some((issue) => issue.path[0] === "acceptTerms"));
+  });
+
+  it("menolak nomor rekening kosong atau bukan digit", () => {
+    const missing = registerSchema.safeParse({ ...validRegistration, bankAccountNumber: "" });
+    assert.equal(missing.success, false);
+    assert.ok(missing.error?.issues.some((issue) => issue.path[0] === "bankAccountNumber"));
+
+    const letters = registerSchema.safeParse({
+      ...validRegistration,
+      bankAccountNumber: "12345abc",
+    });
+    assert.equal(letters.success, false);
+    assert.ok(letters.error?.issues.some((issue) => issue.path[0] === "bankAccountNumber"));
   });
 
   it("menolak konfirmasi kata sandi yang tidak cocok", () => {

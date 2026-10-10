@@ -130,6 +130,7 @@ async function ensureAccount(account: DemoAccount): Promise<Jar> {
         username: account.username,
         email: account.email,
         phone: account.phone,
+        bankAccountNumber: "1234567890",
         password: DEMO_PASSWORD,
         acceptTerms: true,
       },

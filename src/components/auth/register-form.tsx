@@ -16,6 +16,7 @@ interface FormState {
   username: string;
   email: string;
   phone: string;
+  bankAccountNumber: string;
   password: string;
   confirmPassword: string;
   referralCode: string;
@@ -30,6 +31,7 @@ export function RegisterForm() {
     username: "",
     email: "",
     phone: "",
+    bankAccountNumber: "",
     password: "",
     confirmPassword: "",
     referralCode: searchParams.get("ref")?.toUpperCase() ?? "",
@@ -140,6 +142,25 @@ export function RegisterForm() {
             value={form.phone}
             onChange={(event) => update("phone", event.target.value)}
             aria-invalid={Boolean(fieldErrors.phone)}
+            required
+          />
+        </FormField>
+
+        <FormField
+          label="Nomor rekening"
+          error={fieldErrors.bankAccountNumber}
+          htmlFor="bankAccountNumber"
+          hint="Nomor rekening aktif atas nama Anda untuk kebutuhan pembayaran."
+        >
+          <NoPrefillInput
+            id="bankAccountNumber"
+            name="bankAccountNumber"
+            inputMode="numeric"
+            autoComplete="off"
+            placeholder="Contoh: 1234567890"
+            value={form.bankAccountNumber}
+            onChange={(event) => update("bankAccountNumber", event.target.value.replace(/\D/g, ""))}
+            aria-invalid={Boolean(fieldErrors.bankAccountNumber)}
             required
           />
         </FormField>

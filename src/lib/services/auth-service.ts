@@ -101,6 +101,7 @@ export async function registerUser(
           username: input.username,
           email: input.email,
           phone: input.phone,
+          bankAccountNumber: input.bankAccountNumber,
           passwordHash,
           role: "USER",
           status: "ACTIVE",

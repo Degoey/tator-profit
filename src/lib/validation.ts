@@ -28,6 +28,11 @@ export const phoneSchema = z
   .trim()
   .regex(/^\+?[0-9]{7,15}$/, "Masukkan nomor telepon yang valid (7-15 digit, awalan + opsional).");
 
+export const bankAccountNumberSchema = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{6,30}$/, "Masukkan nomor rekening yang valid (6-30 digit).");
+
 export const passwordSchema = z
   .string()
   .min(8, "Kata sandi minimal 8 karakter.")
@@ -62,6 +67,7 @@ export const registerSchema = z
     username: usernameSchema,
     email: emailSchema,
     phone: phoneSchema,
+    bankAccountNumber: bankAccountNumberSchema,
     password: passwordSchema,
     confirmPassword: z.string().optional(),
     referralCode: optionalReferralCodeSchema,

@@ -8,8 +8,10 @@ import { NoPrefillInput } from "@/components/auth/no-prefill-input";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BANK_OPTION_GROUPS } from "@/lib/config/bank-options";
 
 export interface ProfileFormValues {
+  bank: string;
   name: string;
   phone: string;
   country: string;
@@ -31,7 +33,7 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
   const [message, setMessage] = React.useState<string | null>(null);
 
   function update(field: keyof ProfileFormValues) {
-    return (event: React.ChangeEvent<HTMLInputElement>) =>
+    return (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setValues((current) => ({ ...current, [field]: event.target.value }));
   }
 
@@ -47,6 +49,9 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          // Bank/E-Wallet is optional in this form: rows created before the
+          // catalogue existed are empty, and the select has no "clear" option.
+          ...(values.bank ? { bank: values.bank } : {}),
           name: values.name,
           phone: values.phone,
           country: values.country,
@@ -111,6 +116,38 @@ export function ProfileForm({ initial }: { initial: ProfileFormValues }) {
             value={values.phone}
             onChange={update("phone")}
           />
+        </FormField>
+
+        <FormField
+          label="Bank/E-Wallet"
+          htmlFor="profile-bank"
+          error={fieldErrors.bank}
+          hint="Bank atau e-wallet tujuan pembayaran Anda."
+        >
+          {/* Native select (like the sign-up form) so the grouping renders as real
+              <optgroup> rows. The value is a stable code; the server re-validates
+              it against `BANK_VALUES` before saving. */}
+          <select
+            id="profile-bank"
+            name="bank"
+            value={values.bank}
+            onChange={update("bank")}
+            aria-invalid={Boolean(fieldErrors.bank)}
+            className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white focus-visible:border-[var(--color-neon)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-neon)]/25 aria-[invalid=true]:border-red-500/70"
+          >
+            <option value="" disabled>
+              Pilih Bank/E-Wallet
+            </option>
+            {BANK_OPTION_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label} className="bg-[#04070a]">
+                {group.options.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-[#04070a]">
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </FormField>
 
         <FormField label="Negara" htmlFor="profile-country" error={fieldErrors.country}>

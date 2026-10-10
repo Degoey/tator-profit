@@ -105,8 +105,15 @@ dapat dieksekusi sebagai formula oleh aplikasi spreadsheet.
   perubahan konfigurasi program dan imbalan (`program.*`, `reward.*`), serta perubahan
   peran administrator (`admin.role_assigned`). Peristiwa keamanan (login, login gagal,
   logout, reset kata sandi, rate limit) tercatat di `SecurityEvent`.
-- Tarif rujukan saat ini adalah konfigurasi kode (`src/lib/config/referral.ts`) yang tidak
-  dapat diubah saat runtime, sehingga tidak ada mutasi tarif yang perlu diaudit.
+- Persentase **Komisi Rabat** lima generasi kini tersimpan di tabel `RebateConfig` dan
+  dapat diubah saat runtime melalui kartu **Persentase Komisi Rabat** pada `/admin`
+  (`POST /api/admin/rebate`). Setiap perubahan ditolak kecuali oleh peran dengan
+  kemampuan `manageFinance` (SUPER_ADMIN/FINANCE) dan tercatat sebagai
+  `rebate.config.updated` beserta snapshot `before`/`after` seluruh lima generasi.
+  Nilai bawaan (`src/lib/config/referral.ts`) dipakai sebagai cadangan bila tabel belum
+  terisi, sehingga perilaku perhitungan tidak berubah saat migrasi diterapkan.
+- Nilai rabat tidak pernah menulis ulang transaksi historis: setiap baris
+  `ReferralCommission` menyimpan `rate` dan `commissionAmount` miliknya sendiri.
 - Kata sandi, token, dan kredensial tidak pernah dicatat di audit maupun log.
 
 ## 6. Antarmuka peran administrator (Bagian 7/7)
@@ -117,6 +124,16 @@ pernah dibaca untuk peran lain, jadi tidak ada kebocoran lewat payload yang dire
 Setiap perubahan peran tetap divalidasi ulang di dalam service (`assignAdminRole`),
 sehingga akun FINANCE/SUPPORT/COMPLIANCE/VIEWER tidak dapat memakainya walaupun
 mengirim permintaan langsung ke `/api/admin/users/role`.
+
+## 6b. Persentase Komisi Rabat
+
+Fitur rabat hanya mengenal **lima generasi** (10%, 2%, 1%, 1%, 1% sebagai nilai bawaan).
+Generasi 6 dan seterusnya tidak pernah disediakan: `RebateConfig` diberi CHECK constraint
+`generation BETWEEN 1 AND 5`, service memvalidasi ulang, dan form admin hanya merender
+generasi 1..5. Satu konfigurasi (`src/lib/rebate-config.ts`) dipakai bersama oleh beranda
+member (`/dashboard`), tabel admin, dan mesin perhitungan komisi
+(`postReferralCommissionsForTransaction`), sehingga ketiganya selalu menampilkan angka yang
+sama. Keterangan "bukan jaminan nominal penghasilan" tampil pada kartu member.
 
 ## 7. Halaman akun dan kebijakan (Bagian 7/7)
 

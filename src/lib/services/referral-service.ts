@@ -18,6 +18,7 @@ import {
   type ReferralEligibleEventConfig,
 } from "@/lib/config/referral";
 import { MAX_MONEY, MONEY_SCALE, toDecimal, type DecimalInput } from "@/lib/money";
+import { getRebateRates, rebateRateForGeneration } from "@/lib/rebate-config";
 import { prisma } from "@/lib/prisma";
 import {
   loadReferralNetwork,
@@ -333,6 +334,8 @@ export function calculateReferralCommission(input: {
   level: number;
   baseAmount: DecimalInput;
   currency?: string;
+  /** Optional snapshot supplied by the engine; omitted callers use legacy defaults. */
+  rate?: DecimalInput;
 }): ReferralCommissionBreakdown {
   if (!isValidReferralLevel(input.level)) {
     throw new ReferralError(
@@ -341,9 +344,12 @@ export function calculateReferralCommission(input: {
     );
   }
 
-  const rate = referralRateForLevel(input.level);
+  const rate = input.rate === undefined ? referralRateForLevel(input.level) : toDecimal(input.rate);
   if (!rate) {
     throw new ReferralError("INVALID_LEVEL", `Tarif untuk tingkat ${input.level} tidak dikonfigurasi.`);
+  }
+  if (rate.isNegative() || rate.greaterThan(1) || rate.decimalPlaces() > 4) {
+    throw new ReferralError("INVALID_RATE", "Tarif rabat tidak valid.");
   }
 
   let base: Prisma.Decimal;
@@ -578,6 +584,10 @@ export async function postReferralCommissionsForTransaction(
   const { eligible, skipped } = selectCommissionBeneficiaries(sourceTransaction.userId, upline);
   if (eligible.length === 0) return INELIGIBLE("Tidak ada upline aktif dalam lima tingkat.", skipped);
 
+  // Read the current configuration inside the same transaction snapshot. The
+  // resulting rate is copied into each commission row and therefore becomes an
+  // immutable historical snapshot.
+  const rebateRates = await getRebateRates({ client });
   const chainByLevel = new Map(upline.map((entry) => [entry.level, entry.userId]));
   const edges = await client.referral.findMany({
     where: {
@@ -611,6 +621,7 @@ export async function postReferralCommissionsForTransaction(
       level: entry.level,
       baseAmount: sourceTransaction.amount,
       currency: sourceTransaction.currency,
+      rate: rebateRateForGeneration(rebateRates, entry.level) ?? undefined,
     });
 
     rows.push({

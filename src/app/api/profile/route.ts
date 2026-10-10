@@ -20,7 +20,10 @@ export async function GET() {
   return jsonSuccess({ user, programs });
 }
 
-/** Updates the mutable parts of the profile (name, phone, country, city, timezone, bio). */
+/**
+ * Updates the mutable parts of the profile
+ * (bank/e-wallet, name, phone, country, city, timezone, bio).
+ */
 export async function PATCH(request: Request) {
   if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
   const user = await getCurrentUser();
@@ -40,15 +43,16 @@ export async function PATCH(request: Request) {
     );
   }
 
-  const { name, phone, country, city, timezone, bio } = parsed.data;
+  const { bank, name, phone, country, city, timezone, bio } = parsed.data;
   const meta = await getRequestMeta();
 
   try {
     await prisma.$transaction(async (tx) => {
-      if (name || phone) {
+      if (bank || name || phone) {
         await tx.user.update({
           where: { id: user.id },
           data: {
+            ...(bank ? { bank } : {}),
             ...(name ? { name } : {}),
             ...(phone ? { phone } : {}),
           },
@@ -72,7 +76,7 @@ export async function PATCH(request: Request) {
       action: "user.profile.updated",
       entityType: "User",
       entityId: user.id,
-      after: { name, phone, country, city, timezone, bio },
+      after: { bank, name, phone, country, city, timezone, bio },
       meta,
     });
 

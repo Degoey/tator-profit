@@ -11,6 +11,10 @@ export interface CurrentUser {
   username: string;
   email: string;
   phone: string;
+  /** Nomor rekening yang disimpan saat pendaftaran; `null` untuk akun lama. */
+  bankAccountNumber: string | null;
+  /** Kode Bank/E-Wallet stabil (mis. `"BCA"`, `"DANA"`); `null` untuk akun lama. */
+  bank: string | null;
   role: "USER" | "ADMIN";
   /** Null for administrators that have no explicit admin role yet. */
   adminRole: AdminRole | null;
@@ -40,6 +44,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
       username: true,
       email: true,
       phone: true,
+      bankAccountNumber: true,
+      bank: true,
       role: true,
       status: true,
       adminRole: true,
@@ -68,6 +74,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     username: user.username,
     email: user.email,
     phone: user.phone,
+    bankAccountNumber: user.bankAccountNumber,
+    bank: user.bank,
     role: user.role,
     adminRole: user.adminRole,
     status: user.status,

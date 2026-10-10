@@ -16,6 +16,7 @@ import { LogoutButton } from "@/components/auth/logout-button";
 import { JoinProgramPanel } from "@/components/dashboard/join-program-panel";
 import { NetworkTree } from "@/components/dashboard/network-tree";
 import { ProgramProgress } from "@/components/dashboard/program-progress";
+import { RebateRates } from "@/components/dashboard/rebate-rates";
 import { ReferralPanel } from "@/components/dashboard/referral-panel";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TransactionHistory } from "@/components/dashboard/transaction-history";
@@ -26,10 +27,10 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/current-user";
-import { REFERRAL_LEVEL_RATES } from "@/lib/config/referral";
 import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney, formatRate } from "@/lib/money";
 import { getActiveProgram } from "@/lib/program-config";
+import { getRebateRates } from "@/lib/rebate-config";
 import { getBalance, listTransactions } from "@/lib/services/ledger-service";
 import { getProgramProgress, getRewardOverview } from "@/lib/services/reward-service";
 import {
@@ -59,14 +60,17 @@ export default async function DashboardPage({
   const user = await requireUser("/dashboard");
 
   const { program, tiers, cycles } = await getActiveProgram();
-  const [balance, progress, rewards, transactions, network, referralCommissions] = await Promise.all([
-    getBalance(user.id),
-    getProgramProgress(user.id),
-    getRewardOverview(user.id),
-    listTransactions(user.id, 10),
-    getReferralNetwork({ id: user.id, username: user.username }),
-    getReferralCommissionSummary(user.id),
-  ]);
+  const [balance, progress, rewards, transactions, network, referralCommissions, rebateRates] =
+    await Promise.all([
+      getBalance(user.id),
+      getProgramProgress(user.id),
+      getRewardOverview(user.id),
+      listTransactions(user.id, 10),
+      getReferralNetwork({ id: user.id, username: user.username }),
+      getReferralCommissionSummary(user.id),
+      // The single rebate configuration shared with the admin screen and the engine.
+      getRebateRates(),
+    ]);
 
   const referral = { directReferrals: network.counts[0] ?? 0, totalNetwork: network.total };
 
@@ -76,9 +80,13 @@ export default async function DashboardPage({
     topic: "Bantuan umum",
     username: user.username,
   });
-  const referralLevels = REFERRAL_LEVEL_RATES.map((entry) => ({
-    level: entry.level,
-    rate: formatRate(entry.rate),
+  const referralLevels = rebateRates.map((entry) => ({
+    level: entry.generation,
+    rate: entry.displayRate,
+  }));
+  const rebateRows = rebateRates.map((entry) => ({
+    generation: entry.generation,
+    rate: entry.displayRate,
   }));
 
   const totalBalance = balance.availableAmount.plus(balance.pendingAmount);
@@ -254,6 +262,8 @@ export default async function DashboardPage({
             Anda menerima 90%. Dana ditahan saat pengajuan dan dikembalikan jika ditolak.
           </p>
         </section>
+
+        <RebateRates rows={rebateRows} />
 
         <ProgramProgress programs={progress} />
 

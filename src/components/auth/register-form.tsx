@@ -10,6 +10,7 @@ import { NoPrefillInput } from "@/components/auth/no-prefill-input";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BANK_OPTION_GROUPS } from "@/lib/config/bank-options";
 
 interface FormState {
   name: string;
@@ -17,6 +18,7 @@ interface FormState {
   email: string;
   phone: string;
   bankAccountNumber: string;
+  bank: string;
   password: string;
   confirmPassword: string;
   referralCode: string;
@@ -32,6 +34,7 @@ export function RegisterForm() {
     email: "",
     phone: "",
     bankAccountNumber: "",
+    bank: "",
     password: "",
     confirmPassword: "",
     referralCode: searchParams.get("ref")?.toUpperCase() ?? "",
@@ -47,6 +50,15 @@ export function RegisterForm() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    // Bank/E-Wallet wajib dipilih. The form is `noValidate`, so the browser does
+    // not block the submit for us; the server re-checks this same rule.
+    if (!form.bank) {
+      setFieldErrors({ bank: "Silakan pilih Bank/E-Wallet" });
+      setFormError(null);
+      return;
+    }
+
     setPending(true);
     setFieldErrors({});
     setFormError(null);
@@ -144,6 +156,39 @@ export function RegisterForm() {
             aria-invalid={Boolean(fieldErrors.phone)}
             required
           />
+        </FormField>
+
+        <FormField
+          label="Bank/E-Wallet"
+          error={fieldErrors.bank}
+          htmlFor="bank"
+          hint="Pilih bank atau e-wallet yang Anda gunakan untuk pembayaran."
+        >
+          {/* Native select (like the payment forms) so the grouping renders as
+              real <optgroup> rows on every browser. The value is a stable code;
+              the server re-validates it against `BANK_VALUES`. */}
+          <select
+            id="bank"
+            name="bank"
+            value={form.bank}
+            onChange={(event) => update("bank", event.target.value)}
+            aria-invalid={Boolean(fieldErrors.bank)}
+            required
+            className="h-11 w-full rounded-xl border border-white/12 bg-white/[0.04] px-3 text-sm text-white focus-visible:border-[var(--color-neon)]/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-neon)]/25 aria-[invalid=true]:border-red-500/70"
+          >
+            <option value="" disabled>
+              Pilih Bank/E-Wallet
+            </option>
+            {BANK_OPTION_GROUPS.map((group) => (
+              <optgroup key={group.label} label={group.label} className="bg-[#04070a]">
+                {group.options.map((option) => (
+                  <option key={option.value} value={option.value} className="bg-[#04070a]">
+                    {option.label}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
         </FormField>
 
         <FormField

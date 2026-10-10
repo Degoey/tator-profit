@@ -1,4 +1,4 @@
-import { AtSign, Phone, ShieldCheck, UserRound } from "lucide-react";
+import { AtSign, CreditCard, Landmark, Phone, ShieldCheck, UserRound } from "lucide-react";
 import type { Metadata } from "next";
 
 import { ProfileForm } from "@/components/profile/profile-form";
@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
+import { bankLabel } from "@/lib/config/bank-options";
 import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
@@ -84,6 +85,24 @@ export default async function ProfilePage() {
             </div>
             <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
               <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
+                <Landmark className="size-3.5" aria-hidden />
+                Bank/E-Wallet
+              </p>
+              <p className="mt-2 text-sm text-white">
+                {bankLabel(user.bank) || "Belum tersedia"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
+                <CreditCard className="size-3.5" aria-hidden />
+                Nomor rekening
+              </p>
+              <p className="mt-2 font-mono text-sm text-white">
+                {user.bankAccountNumber ?? "Belum tersedia"}
+              </p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/60">
                 <ShieldCheck className="size-3.5" aria-hidden />
                 Kode rujukan
               </p>
@@ -132,12 +151,14 @@ export default async function ProfilePage() {
           <CardHeader>
             <CardTitle>Perbarui profil</CardTitle>
             <CardDescription>
-              Nama, telepon, negara, kota, zona waktu, dan bio dapat diperbarui kapan saja.
+              Bank/E-Wallet, nama, telepon, negara, kota, zona waktu, dan bio dapat diperbarui
+              kapan saja.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <ProfileForm
               initial={{
+                bank: user.bank ?? "",
                 name: user.name,
                 phone: user.phone,
                 country: profile?.country ?? "",
@@ -150,8 +171,9 @@ export default async function ProfilePage() {
         </Card>
 
         <Alert variant="info" title="Catatan">
-          Perubahan nomor telepon hanya mengubah data kontak. Nama pengguna dan surel tetap agar
-          identitas akun pada buku besar dan jejak audit tidak berubah.
+          Perubahan nomor telepon hanya mengubah data kontak. Perubahan Bank/E-Wallet berlaku untuk
+          pembayaran berikutnya. Nama pengguna dan surel tetap agar identitas akun pada buku besar
+          dan jejak audit tidak berubah.
         </Alert>
 
         <CustomerServiceCard

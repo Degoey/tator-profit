@@ -12,6 +12,7 @@ import {
   PROGRAM_REWARD_TERMS,
   PROGRAM_TIER_DEFINITIONS,
 } from "../src/lib/config/program";
+import { REFERRAL_LEVEL_RATES } from "../src/lib/config/referral";
 
 /**
  * Seeds the active reward program, its nine USDT join tiers and its three
@@ -90,6 +91,17 @@ async function main() {
         targetCycleRewardRate: cycle.targetCycleRewardRate,
         isActive: true,
       },
+    });
+  }
+
+  // Persentase Komisi Rabat: lima generasi, sumber data utama bersama untuk
+  // beranda member, dashboard admin, dan mesin perhitungan rabat. Nilainya
+  // idempoten sehingga menjalankan seed ulang tidak menimpa perubahan admin.
+  for (const entry of REFERRAL_LEVEL_RATES) {
+    await prisma.rebateConfig.upsert({
+      where: { generation: entry.level },
+      update: {},
+      create: { generation: entry.level, rate: entry.rate },
     });
   }
 

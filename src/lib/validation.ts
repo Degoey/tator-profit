@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { BANK_VALUES } from "@/lib/config/bank-options";
 import { REFERRAL_CODE_PATTERN, normalizeReferralCode } from "@/lib/config/referral";
 
 export const nameSchema = z
@@ -32,6 +33,10 @@ export const bankAccountNumberSchema = z
   .string()
   .trim()
   .regex(/^[0-9]{6,30}$/, "Masukkan nomor rekening yang valid (6-30 digit).");
+
+export const bankSchema = z.enum(BANK_VALUES, {
+  message: "Silakan pilih Bank/E-Wallet",
+});
 
 export const passwordSchema = z
   .string()
@@ -68,6 +73,7 @@ export const registerSchema = z
     email: emailSchema,
     phone: phoneSchema,
     bankAccountNumber: bankAccountNumberSchema,
+    bank: bankSchema,
     password: passwordSchema,
     confirmPassword: z.string().optional(),
     referralCode: optionalReferralCodeSchema,
@@ -112,6 +118,7 @@ export const resetPasswordSchema = z
   });
 
 export const updateProfileSchema = z.object({
+  bank: bankSchema.optional(),
   name: nameSchema.optional(),
   phone: phoneSchema.optional(),
   country: z.string().trim().max(56).optional(),
@@ -210,6 +217,37 @@ export const adminCreditSchema = z.object({
 });
 
 export type AdminCreditInput = z.infer<typeof adminCreditSchema>;
+
+/**
+ * One rebate percentage as a fraction (0.1000 = 10%), between 0 and 1 with at
+ * most four decimals. The engine and the admin UI never divide by 100 twice.
+ */
+export const rebateRateSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^(0(\.[0-9]{1,4})?|1(\.0{1,4})?)$/,
+    "Persentase rabat harus antara 0 dan 1 (contoh 0.1000 = 10%), maksimal 4 desimal.",
+  );
+
+/**
+ * Administrator rebate configuration update. Generation is bounded to 1..5 so a
+ * sixth generation can never be submitted; the service re-validates the range.
+ */
+export const rebateConfigUpdateSchema = z.object({
+  updates: z
+    .array(
+      z.object({
+        generation: z.number().int().min(1).max(5),
+        rate: rebateRateSchema,
+      }),
+      { message: "Periksa kembali daftar persentase rabat." },
+    )
+    .min(1, "Kirim minimal satu generasi.")
+    .max(5, "Hanya generasi 1 sampai 5 yang dapat dikonfigurasi."),
+});
+
+export type RebateConfigUpdateInput = z.infer<typeof rebateConfigUpdateSchema>;
 
 
 /** Flattens a Zod error into a `{ field: message }` map for form rendering. */

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { adminCreditSchema, joinProgramSchema, registerSchema } from "../src/lib/validation";
+import {
+  adminCreditSchema,
+  joinProgramSchema,
+  registerSchema,
+  updateProfileSchema,
+} from "../src/lib/validation";
 
 const validRegistration = {
   name: "Budi Santoso",
@@ -9,6 +14,7 @@ const validRegistration = {
   email: "Budi@Example.COM",
   phone: "+628123456789",
   bankAccountNumber: "0123456789",
+  bank: "BCA",
   password: "Tator12345",
   acceptTerms: true,
 };
@@ -77,6 +83,29 @@ describe("registerSchema", () => {
     });
     assert.equal(letters.success, false);
     assert.ok(letters.error?.issues.some((issue) => issue.path[0] === "bankAccountNumber"));
+  });
+
+  it("menerima pilihan Bank/E-Wallet dari daftar", () => {
+    const result = registerSchema.safeParse({ ...validRegistration, bank: "DANA" });
+
+    assert.equal(result.success, true);
+    assert.equal(result.data?.bank, "DANA");
+  });
+
+  it("menolak Bank/E-Wallet yang kosong dengan pesan pilihan wajib", () => {
+    const missing = registerSchema.safeParse({ ...validRegistration, bank: "" });
+
+    assert.equal(missing.success, false);
+    const issue = missing.error?.issues.find((item) => item.path[0] === "bank");
+    assert.ok(issue, "harus ada error pada field bank");
+    assert.equal(issue?.message, "Silakan pilih Bank/E-Wallet");
+  });
+
+  it("menolak Bank/E-Wallet yang tidak ada di daftar", () => {
+    const unknown = registerSchema.safeParse({ ...validRegistration, bank: "BANK_ASING" });
+
+    assert.equal(unknown.success, false);
+    assert.ok(unknown.error?.issues.some((issue) => issue.path[0] === "bank"));
   });
 
   it("menolak konfirmasi kata sandi yang tidak cocok", () => {
@@ -160,5 +189,29 @@ describe("adminCreditSchema", () => {
     const result = adminCreditSchema.safeParse({ ...validCredit, reference: "FIN:2026-0001" });
 
     assert.equal(result.success, true);
+  });
+});
+
+describe("updateProfileSchema", () => {
+  it("menerima kode Bank/E-Wallet dari katalog", () => {
+    const result = updateProfileSchema.safeParse({ bank: "SHOPEEPAY", name: "Nama Baru" });
+
+    assert.equal(result.success, true);
+    assert.equal(result.data?.bank, "SHOPEEPAY");
+  });
+
+  it("tetap opsional agar kolom lain bisa diperbarui tanpa memilih bank", () => {
+    const result = updateProfileSchema.safeParse({ name: "Nama Baru", city: "Makassar" });
+
+    assert.equal(result.success, true);
+    assert.equal(result.data?.bank, undefined);
+  });
+
+  it("menolak Bank/E-Wallet kosong atau di luar katalog", () => {
+    for (const bank of ["", "BANK_ASING", "bca"]) {
+      const result = updateProfileSchema.safeParse({ bank });
+      assert.equal(result.success, false, `bank=${JSON.stringify(bank)}`);
+      assert.ok(result.error?.issues.some((issue) => issue.path[0] === "bank"), `bank=${bank}`);
+    }
   });
 });

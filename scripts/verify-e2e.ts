@@ -138,6 +138,7 @@ async function main() {
     email: `alice_${stamp}@example.com`,
     phone: `+62811${stamp}`,
     bankAccountNumber: "0123456789",
+    bank: "BCA",
     password,
   };
   const bob = {
@@ -146,6 +147,7 @@ async function main() {
     email: `bob_${stamp}@example.com`,
     phone: `+62812${stamp}`,
     bankAccountNumber: "0123456790",
+    bank: "DANA",
     password,
   };
 
@@ -384,6 +386,7 @@ async function main() {
       email: `gen${level}_${stamp}@example.com`,
       phone: `+6291${level}${stamp}`,
       bankAccountNumber: `012345${level}7890`,
+      bank: "BCA",
       password,
     };
     const jar = cookieJar(ipSet.chain(level));
@@ -527,6 +530,7 @@ async function main() {
     email: `admin_${stamp}@example.com`,
     phone: `+62813${stamp}`,
     bankAccountNumber: "0123456781",
+    bank: "BRI",
     password,
   };
   const adminRegister = await request("/api/auth/register", {

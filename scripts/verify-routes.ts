@@ -116,6 +116,7 @@ class Session {
         email: `${username}@example.com`,
         phone: `+6282${stamp}${Math.floor(Math.random() * 90 + 10)}`,
         bankAccountNumber: `0123${stamp}7890`,
+        bank: "BCA",
         password,
         acceptTerms: true,
       },

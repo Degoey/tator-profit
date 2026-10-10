@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
 import { AdminCreditForm, CreditPermissionNote } from "@/components/payments/admin-credit-form";
 import { AdminDepositReview } from "@/components/payments/admin-deposit-review";
+import { AdminRebateSettings } from "@/components/payments/admin-rebate-settings";
 import { AdminRoleManager } from "@/components/payments/admin-role-manager";
 import { AdminWithdrawalReview } from "@/components/payments/admin-withdrawal-review";
 import { PaymentKpis, PaymentShell } from "@/components/payments/payment-shell";
@@ -21,6 +22,7 @@ import { requireAdminCapability } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { listAdministrators } from "@/lib/services/admin-role-service";
+import { listRebateConfig } from "@/lib/services/rebate-config-service";
 import { withdrawalAmounts } from "@/lib/withdrawal-fee";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +54,8 @@ export default async function AdminPage() {
   const canReadAudit = canAdmin(admin.adminRole, "readAudit");
   /** Role administration is SUPER_ADMIN only; other roles never load the list. */
   const canManageUsers = canAdmin(admin.adminRole, "manageUsers");
+  /** Rebate percentages are editable by SUPER_ADMIN/FINANCE (`manageFinance`). */
+  const canManageRebate = canAdmin(admin.adminRole, "manageFinance");
 
   /**
    * Capabilities are decided on the server, per action: FINANCE/SUPER_ADMIN may
@@ -130,6 +134,8 @@ export default async function AdminPage() {
    * and the rows never reach the server rendered payload.
    */
   const administrators = canManageUsers ? await listAdministrators() : [];
+  /** The shared rebate configuration; every administrator may read it. */
+  const rebateConfig = await listRebateConfig();
   const requestAuditEntries = canReadAudit
     ? await prisma.auditLog.findMany({
         where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
@@ -461,6 +467,18 @@ export default async function AdminPage() {
         </CardContent>
       </Card>
 
+      <AdminRebateSettings
+        canEdit={canManageRebate}
+        fromDatabase={rebateConfig.fromDatabase}
+        rows={rebateConfig.generations.map((row) => ({
+          generation: row.generation,
+          rate: row.rate,
+          displayRate: row.displayRate,
+          percent: row.percent,
+          updatedAt: row.updatedAt,
+          updatedBy: row.updatedBy,
+        }))}
+      />
 
       <Card id="audit">
         <CardHeader>

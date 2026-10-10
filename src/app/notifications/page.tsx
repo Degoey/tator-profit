@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/prisma";
+import { notificationHref } from "@/lib/services/notification-service";
 
 export const metadata: Metadata = {
   title: "Notifikasi",
@@ -24,10 +25,31 @@ export default async function NotificationsPage() {
     where: { userId: user.id },
     orderBy: { createdAt: "desc" },
     take: 100,
-    select: { id: true, type: true, title: true, body: true, readAt: true, createdAt: true },
+    select: {
+      id: true,
+      type: true,
+      title: true,
+      body: true,
+      readAt: true,
+      createdAt: true,
+      metadata: true,
+    },
   });
 
-  const unread = rows.filter((row) => !row.readAt).length;
+  // The target page of a notification lives in its metadata and is validated
+  // here: `notificationHref` returns `null` for anything that is not a
+  // site-relative path, so a `href` is never built from an unvalidated string.
+  const notificationRows = rows.map((row) => ({
+    id: row.id,
+    type: row.type,
+    title: row.title,
+    body: row.body,
+    readAt: row.readAt,
+    createdAt: row.createdAt,
+    href: notificationHref(row.metadata),
+  }));
+
+  const unread = notificationRows.filter((row) => !row.readAt).length;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -54,10 +76,13 @@ export default async function NotificationsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Kotak masuk</CardTitle>
-            <CardDescription>100 notifikasi terbaru milik akun ini.</CardDescription>
+            <CardDescription>
+              100 notifikasi terbaru milik akun ini. Gunakan tombol “Lihat detail” untuk membuka
+              halaman terkait; membuka tautan sekaligus menandai notifikasi terbaca.
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <NotificationList rows={rows} />
+            <NotificationList rows={notificationRows} />
           </CardContent>
         </Card>
       </main>

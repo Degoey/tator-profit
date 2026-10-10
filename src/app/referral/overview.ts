@@ -1,5 +1,6 @@
-import { REFERRAL_LEVEL_RATES } from "@/lib/config/referral";
-import { formatRate, sumMoney } from "@/lib/money";
+import { referralLevelLabel } from "@/lib/config/referral";
+import { sumMoney } from "@/lib/money";
+import { getRebateRates } from "@/lib/rebate-config";
 import type { ReferralNetwork } from "@/lib/referral-network";
 import {
   getReferralNetwork,
@@ -100,21 +101,24 @@ export interface ReferralOverviewInput {
 }
 
 export async function loadReferralOverview(user: ReferralOverviewInput): Promise<ReferralOverview> {
-  const [network, commissionRows, memberRows] = await Promise.all([
+  const [network, commissionRows, memberRows, rebateRates] = await Promise.all([
     getReferralNetwork({ id: user.id, username: user.username }),
     listReferralCommissions(user.id, MAX_COMMISSION_ROWS),
     getReferralNetworkMembers(user.id),
+    // The live rebate configuration, so this page shows the percentages an
+    // administrator actually saved instead of the compiled-in defaults.
+    getRebateRates(),
   ]);
 
   const currency = commissionRows[0]?.currency ?? "USDT";
 
-  const levels: ReferralLevelRow[] = REFERRAL_LEVEL_RATES.map((entry) => {
-    const rows = commissionRows.filter((row) => row.level === entry.level);
+  const levels: ReferralLevelRow[] = rebateRates.map((entry) => {
+    const rows = commissionRows.filter((row) => row.level === entry.generation);
     return {
-      level: entry.level,
-      label: entry.label,
-      rate: formatRate(entry.rate),
-      members: network.counts[entry.level - 1] ?? 0,
+      level: entry.generation,
+      label: referralLevelLabel(entry.generation),
+      rate: entry.displayRate,
+      members: network.counts[entry.generation - 1] ?? 0,
       commissionCount: rows.length,
       commissionTotal: sumMoney(rows.map((row) => row.commissionAmount)).toFixed(2),
       currency,

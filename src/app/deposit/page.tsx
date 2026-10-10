@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { DepositApprovalNotice } from "@/components/payments/deposit-approval-notice";
 import { DepositForm } from "@/components/payments/deposit-form";
 import { DepositHistory } from "@/components/payments/deposit-history";
 import { PaymentKpis, PaymentShell } from "@/components/payments/payment-shell";
@@ -7,6 +8,8 @@ import { Alert } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireUser } from "@/lib/auth/current-user";
 import { prisma } from "@/lib/prisma";
+import { AWAITING_REVIEW_DEPOSIT_STATUSES } from "@/lib/services/manual-payment-service";
+import { getUnreadDepositApprovalNotice } from "@/lib/services/notification-service";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +19,13 @@ export const metadata: Metadata = {
     "Kirim bukti pembayaran untuk keanggotaan program yang menunggu, dan pantau status verifikasi admin.",
 };
 
-/** Deposit statuses that keep the membership occupied (only one open deposit per membership). */
-const OPEN_DEPOSIT_STATUSES = ["PENDING", "UNDER_REVIEW", "FLAGGED"];
-
 export default async function DepositPage() {
   const user = await requireUser("/deposit");
 
-  const [memberships, history] = await Promise.all([
+  // A deposit that is still undecided keeps its membership occupied, so only one
+  // open request per membership is allowed (the list lives in the service, next
+  // to the rule that enforces it).
+  const [memberships, history, approvalNotice] = await Promise.all([
     prisma.userProgram.findMany({
       where: { userId: user.id, status: "PENDING" },
       orderBy: { joinedAt: "desc" },
@@ -34,9 +37,13 @@ export default async function DepositPage() {
       take: 200,
       include: { userProgram: { include: { tier: true, program: true } } },
     }),
+    // Unread approval notice: the banner disappears once the member opens it.
+    getUnreadDepositApprovalNotice(user.id),
   ]);
 
-  const openDeposits = history.filter((row) => OPEN_DEPOSIT_STATUSES.includes(row.status));
+  const openDeposits = history.filter((row) =>
+    AWAITING_REVIEW_DEPOSIT_STATUSES.includes(row.status),
+  );
   const blockedMembershipIds = new Set(openDeposits.map((row) => row.userProgramId));
   const selectableMemberships = memberships.filter((row) => !blockedMembershipIds.has(row.id));
 
@@ -64,6 +71,14 @@ export default async function DepositPage() {
         ]}
       />
 
+      {approvalNotice ? (
+        <DepositApprovalNotice
+          notificationId={approvalNotice.notificationId}
+          amount={approvalNotice.amount}
+          currency={approvalNotice.currency}
+        />
+      ) : null}
+
       {openDeposits.length > 0 ? (
         <Alert variant="info" title="Deposit masih berjalan">
           Keanggotaan dengan deposit terbuka tidak dapat menerima pengajuan kedua. Tunggu verifikasi
@@ -85,7 +100,7 @@ export default async function DepositPage() {
         }))}
       />
 
-      <Card>
+      <Card id="riwayat-deposit">
         <CardHeader>
           <CardTitle>Riwayat deposit</CardTitle>
           <p className="text-xs text-white/45">200 pengajuan terbaru · waktu UTC</p>

@@ -2,15 +2,25 @@ import { Network, Users } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { REFERRAL_DEPTH, REFERRAL_LEVEL_RATES } from "@/lib/config/referral";
+import { REFERRAL_DEPTH } from "@/lib/config/referral";
 import { formatMoney, formatRate } from "@/lib/money";
 
+export interface ReferralLevelRateRow {
+  level: number;
+  label: string;
+  /** Display percentage, e.g. `10%`, already formatted from the stored rate. */
+  rate: string;
+}
+
 export interface ReferralSectionProps {
+  /** Illustrative commission per level for the sample program value. */
   rows: { level: number; rate: string; amount: string }[];
+  /** Live rebate configuration, one row per generation. */
+  levels: ReferralLevelRateRow[];
   baseAmount: string;
 }
 
-export function ReferralSection({ rows, baseAmount }: ReferralSectionProps) {
+export function ReferralSection({ rows, levels, baseAmount }: ReferralSectionProps) {
   return (
     <section id="referral" className="py-20">
       <div className="mx-auto grid w-full max-w-6xl gap-8 px-5 lg:grid-cols-[0.95fr_1.05fr]">
@@ -29,7 +39,7 @@ export function ReferralSection({ rows, baseAmount }: ReferralSectionProps) {
           </p>
 
           <ul className="space-y-2.5">
-            {REFERRAL_LEVEL_RATES.map((level) => (
+            {levels.map((level) => (
               <li
                 key={level.level}
                 className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
@@ -39,9 +49,7 @@ export function ReferralSection({ rows, baseAmount }: ReferralSectionProps) {
                   Tingkat {level.level}
                   <span className="text-xs text-white/40">({level.label})</span>
                 </span>
-                <span className="font-semibold text-[var(--color-gold)]">
-                  {formatRate(level.rate)}
-                </span>
+                <span className="font-semibold text-[var(--color-gold)]">{level.rate}</span>
               </li>
             ))}
           </ul>

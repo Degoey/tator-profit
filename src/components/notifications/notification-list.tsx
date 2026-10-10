@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCheck, Loader2 } from "lucide-react";
+import { CheckCheck, ExternalLink, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import * as React from "react";
 
@@ -14,8 +15,15 @@ export interface NotificationRow {
   type: string;
   title: string;
   body: string;
+  /** Unread rows are highlighted; a row without `readAt` is unread. */
   readAt: Date | null;
   createdAt: Date;
+  /**
+   * In-site target written by the service that created the notification, e.g.
+   * `/deposit`. Only site-relative paths reach this field — the page validates
+   * them through `notificationHref` before rendering.
+   */
+  href?: string | null;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -56,6 +64,21 @@ export function NotificationList({ rows }: { rows: NotificationRow[] }) {
     } finally {
       setPending(null);
     }
+  }
+
+  /**
+   * Following the link of a notification counts as having read it: the same PATCH
+   * endpoint is called, but with `keepalive` so the request survives the
+   * navigation the click starts. If it is dropped the row simply stays unread —
+   * nothing is lost, the member can still mark it by hand.
+   */
+  function markReadOnFollow(id: string) {
+    void fetch("/api/notifications", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+      keepalive: true,
+    }).catch(() => undefined);
   }
 
   const unread = rows.filter((row) => !row.readAt);
@@ -117,18 +140,32 @@ export function NotificationList({ rows }: { rows: NotificationRow[] }) {
                   <p className="text-[11px] text-white/50">{formatPaymentDate(row.createdAt)}</p>
                 </div>
 
-                {!row.readAt ? (
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={pending !== null}
-                    onClick={() => markRead(row.id)}
-                  >
-                    {pending === row.id ? <Loader2 className="animate-spin" aria-hidden /> : null}
-                    Tandai dibaca
-                  </Button>
-                ) : null}
+                <div className="flex flex-wrap items-center gap-2">
+                  {row.href ? (
+                    <Button asChild size="sm" variant="outline">
+                      <Link
+                        href={row.href}
+                        onClick={row.readAt ? undefined : () => markReadOnFollow(row.id)}
+                      >
+                        <ExternalLink aria-hidden />
+                        Lihat detail
+                      </Link>
+                    </Button>
+                  ) : null}
+
+                  {!row.readAt ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      disabled={pending !== null}
+                      onClick={() => markRead(row.id)}
+                    >
+                      {pending === row.id ? <Loader2 className="animate-spin" aria-hidden /> : null}
+                      Tandai dibaca
+                    </Button>
+                  ) : null}
+                </div>
               </div>
             </li>
           ))}

@@ -163,6 +163,15 @@ export async function joinProgramTier(
         type: "PROGRAM",
         title: `Gabung tercatat: ${tier.code} · ${cycleWeeks} minggu`,
         body: `Gabungan Anda berstatus menunggu konfirmasi dana (durasi ${cycleWeeks} minggu, target ${maxCycleRewardRate.times(100).toFixed(0)}% per siklus). Admin harus mengonfirmasi dana yang diterima di luar platform sebelum siklus dimulai.`,
+        metadata: {
+          userProgramId: membership.id,
+          tierCode: tier.code,
+          cycleWeeks,
+          amount: tier.joinAmount.toFixed(2),
+          currency: tier.currency,
+          status: "PENDING",
+          href: "/deposit",
+        },
       },
     });
 
@@ -322,6 +331,14 @@ export async function activateUserProgramInTransaction(
       type: "PROGRAM",
       title: `Program diaktifkan: ${membership.tier.code}`,
       body: `Program ${membership.currency} ${confirmed.toFixed(2)} Anda berstatus aktif. Periode imbalan mingguan sekarang dievaluasi sesuai ketentuan program.`,
+      metadata: {
+        userProgramId: membership.id,
+        tierCode: membership.tier.code,
+        amount: confirmed.toFixed(2),
+        currency: membership.currency,
+        status: "ACTIVE",
+        href: "/dashboard",
+      },
     },
   });
 
@@ -522,12 +539,33 @@ export interface ReferralCommissionPreviewRow {
   amount: string;
 }
 
-/** Illustrative referral commission breakdown for a given base amount (USDT). */
+/**
+ * Illustrative referral commission breakdown for a given base amount (USDT).
+ *
+ * `rates` is the live rebate configuration (`getRebateRates()`). Passing it makes
+ * the illustration follow whatever an administrator saved, instead of the
+ * compiled-in defaults, so the landing page can never advertise a percentage the
+ * calculation engine would not pay. Without it the shared static configuration is
+ * used, which keeps the function usable from synchronous callers and tests.
+ */
 export function previewReferralCommissions(
   baseAmount: Prisma.Decimal,
+  rates?: readonly { generation: number; rate: Prisma.Decimal }[],
 ): ReferralCommissionPreviewRow[] {
   const rows: ReferralCommissionPreviewRow[] = [];
   const safeBase = baseAmount.isZero() ? new Prisma.Decimal(1) : baseAmount;
+
+  if (rates) {
+    for (const entry of rates) {
+      const amount = baseAmount.times(entry.rate).toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP);
+      rows.push({
+        level: entry.generation,
+        rate: entry.rate.toDecimalPlaces(4, Prisma.Decimal.ROUND_HALF_UP).toFixed(4),
+        amount: amount.toFixed(2),
+      });
+    }
+    return rows;
+  }
 
   for (let level = 1; level <= REFERRAL_DEPTH; level += 1) {
     const amount = calculateCommission(baseAmount, level);

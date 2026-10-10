@@ -13,9 +13,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PROGRAM_TIER_AMOUNTS } from "@/lib/config/program";
+import { referralLevelLabel } from "@/lib/config/referral";
 import { getCustomerServiceConfig } from "@/lib/config/support";
 import { formatMoney, formatRate, toDecimal } from "@/lib/money";
 import { getActiveProgram } from "@/lib/program-config";
+import { getRebateRates } from "@/lib/rebate-config";
 import { previewReferralCommissions } from "@/lib/services/program-service";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +57,17 @@ export default async function LandingPage() {
 
   const referralBase =
     tiers.find((tier) => tier.joinAmount.equals(100))?.joinAmount ?? tiers[0]?.joinAmount ?? null;
-  const referralRows = referralBase ? previewReferralCommissions(referralBase) : [];
+
+  // The percentages shown to visitors are the ones stored in the database, the
+  // same source the calculation engine and the member dashboard read. A visitor
+  // can therefore never be shown a rate the platform would not pay.
+  const rebateRates = await getRebateRates();
+  const referralRows = referralBase ? previewReferralCommissions(referralBase, rebateRates) : [];
+  const referralLevels = rebateRates.map((entry) => ({
+    level: entry.generation,
+    label: referralLevelLabel(entry.generation),
+    rate: entry.displayRate,
+  }));
 
   // Customer service runs on WhatsApp only: the landing page links out to the chat and
   // never renders a ticket form, a message box or a conversation history.
@@ -250,6 +262,7 @@ export default async function LandingPage() {
 
         <ReferralSection
           rows={referralRows}
+          levels={referralLevels}
           baseAmount={referralBase ? formatMoney(referralBase, program.currency) : "-"}
         />
       </main>

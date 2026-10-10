@@ -231,7 +231,14 @@ export async function creditBalanceByAdmin(input: AdminCreditInput): Promise<Adm
           type: "SYSTEM",
           title: "Kredit saldo diterima",
           body: `${entry.amount.toFixed(2)} USDT telah dikreditkan oleh administrator. Referensi: ${reference}.`,
-          metadata: { transactionId: entry.id, reference, kind: "ADMIN_CREDIT" },
+          metadata: {
+            transactionId: entry.id,
+            reference,
+            kind: "ADMIN_CREDIT",
+            amount: entry.amount.toFixed(2),
+            currency: entry.currency,
+            href: "/transactions",
+          },
         },
       });
 

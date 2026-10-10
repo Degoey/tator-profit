@@ -73,6 +73,17 @@ export function referralRateForLevel(level: number): Prisma.Decimal | null {
   return entry ? entry.rate : null;
 }
 
+/**
+ * Human label for a generation. Surfaces that read the *live* rebate
+ * configuration from the database (`getRebateRates()`) keep using the labels of
+ * this shared configuration, so only the percentage can ever differ between two
+ * screens — never the wording.
+ */
+export function referralLevelLabel(level: number): string {
+  const entry = REFERRAL_LEVEL_RATES.find((item) => item.level === level);
+  return entry ? entry.label : `Tingkat ${level}`;
+}
+
 export function isValidReferralLevel(level: number): boolean {
   return Number.isInteger(level) && level >= 1 && level <= REFERRAL_DEPTH;
 }

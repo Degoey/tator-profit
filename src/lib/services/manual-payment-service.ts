@@ -183,6 +183,17 @@ const WITHDRAWAL_TRANSITIONS: Record<WithdrawalAction, WithdrawalStatus[]> = {
 
 /** Statuses that keep a deposit "open" for its membership (see the unique index). */
 const OPEN_DEPOSIT_STATUSES: DepositStatus[] = ["PENDING", "UNDER_REVIEW", "APPROVED", "FLAGGED"];
+/**
+ * Statuses a deposit request can still be in while no administrator has decided
+ * it. `OPEN_DEPOSIT_STATUSES` additionally contains APPROVED — an approved
+ * request keeps occupying its membership — so only this list is reported to the
+ * member as "menunggu konfirmasi".
+ */
+export const AWAITING_REVIEW_DEPOSIT_STATUSES: readonly DepositStatus[] = [
+  "PENDING",
+  "UNDER_REVIEW",
+  "FLAGGED",
+];
 /** Statuses that hold a reservation on the member's spendable balance. */
 const OPEN_WITHDRAWAL_STATUSES: WithdrawalStatus[] = [
   "PENDING",
@@ -690,6 +701,11 @@ export async function reviewDepositRequest(
             status: updated.status,
             ledgerReference,
             membershipStatus,
+            amount: updated.amount.toFixed(2),
+            currency: updated.currency,
+            reason: input.reason ?? null,
+            // In-site target of the notification, rendered as an actionable link.
+            href: "/deposit",
           },
         },
       });
@@ -1021,6 +1037,10 @@ export async function reviewWithdrawalRequest(
             status: updated.status,
             released,
             settled,
+            amount: updated.amount.toFixed(2),
+            currency: updated.currency,
+            reason: input.reason ?? null,
+            href: "/withdrawal",
           },
         },
       });
@@ -1131,6 +1151,63 @@ export async function listDepositsForUser(
     paymentReference: row.paymentReference,
     createdAt: row.createdAt.toISOString(),
   }));
+}
+
+export interface MemberDepositSummary {
+  /** Requests still waiting for an administrator decision. */
+  awaitingCount: number;
+  awaitingAmount: string;
+  /** Requests an administrator has confirmed (recorded in `PROGRAM_FUNDS`). */
+  approvedCount: number;
+  approvedAmount: string;
+  /** Status of the newest request of the member, whatever it is. */
+  latestStatus: DepositStatus | null;
+  /** When the newest request that already has a decision was reviewed. */
+  latestReviewedAt: Date | null;
+  currency: string;
+}
+
+/**
+ * Aggregate-only deposit summary for the member dashboard.
+ *
+ * The sums are computed by PostgreSQL over `numeric` columns and never in
+ * JavaScript, so the amount shown to the member is the stored amount. Nothing
+ * here credits anything: an approved deposit already moved the money through the
+ * ledger when the administrator approved it.
+ */
+export async function getMemberDepositSummary(userId: string): Promise<MemberDepositSummary> {
+  const [awaiting, approved, latest, latestReviewed] = await Promise.all([
+    prisma.depositRequest.aggregate({
+      where: { userId, status: { in: [...AWAITING_REVIEW_DEPOSIT_STATUSES] } },
+      _count: true,
+      _sum: { amount: true },
+    }),
+    prisma.depositRequest.aggregate({
+      where: { userId, status: "APPROVED" },
+      _count: true,
+      _sum: { amount: true },
+    }),
+    prisma.depositRequest.findFirst({
+      where: { userId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { status: true, currency: true },
+    }),
+    prisma.depositRequest.findFirst({
+      where: { userId, reviewedAt: { not: null } },
+      orderBy: [{ reviewedAt: "desc" }, { id: "desc" }],
+      select: { reviewedAt: true },
+    }),
+  ]);
+
+  return {
+    awaitingCount: awaiting._count,
+    awaitingAmount: (awaiting._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+    approvedCount: approved._count,
+    approvedAmount: (approved._sum.amount ?? new Prisma.Decimal(0)).toFixed(2),
+    latestStatus: latest?.status ?? null,
+    latestReviewedAt: latestReviewed?.reviewedAt ?? null,
+    currency: latest?.currency ?? "USDT",
+  };
 }
 
 /** Withdrawals of one member, newest first. */

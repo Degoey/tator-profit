@@ -195,7 +195,14 @@ async function generateForMembership(
       body:
         `Target imbalan Minggu ${period} sebesar ${membership.currency} ${calculation.target.toFixed(2)} ` +
         `dicatat dengan status menunggu persetujuan untuk ${membership.tier.code}. Persetujuan dan ketentuan kualifikasi berlaku.`,
-      metadata: { rewardId: reward.id, period, userProgramId: membership.id },
+      metadata: {
+        rewardId: reward.id,
+        period,
+        userProgramId: membership.id,
+        amount: calculation.target.toFixed(2),
+        currency: membership.currency,
+        href: "/rewards",
+      },
     },
   });
 
@@ -579,7 +586,14 @@ export async function payReward(
         type: "REWARD",
         title: `Imbalan dibayar: Minggu ${reward.period}`,
         body: `Imbalan Minggu ${reward.period} sebesar ${reward.currency} ${reward.amount.toFixed(2)} sudah dibayar ke saldo tersedia Anda.`,
-        metadata: { rewardId: reward.id, transactionId: paid.id },
+        metadata: {
+          rewardId: reward.id,
+          transactionId: paid.id,
+          period: reward.period,
+          amount: reward.amount.toFixed(2),
+          currency: reward.currency,
+          href: "/rewards",
+        },
       },
     });
 
@@ -646,7 +660,14 @@ export async function rejectReward(
         type: "REWARD",
         title: `Imbalan ditolak: Minggu ${reward.period}`,
         body: `Imbalan Minggu ${reward.period} ditolak. Alasan: ${reason}`,
-        metadata: { rewardId: reward.id },
+        metadata: {
+          rewardId: reward.id,
+          period: reward.period,
+          amount: reward.amount.toFixed(2),
+          currency: reward.currency,
+          reason,
+          href: "/rewards",
+        },
       },
     });
 

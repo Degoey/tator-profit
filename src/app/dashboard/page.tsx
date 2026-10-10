@@ -5,6 +5,7 @@ import {
   Coins,
   Hourglass,
   Layers,
+  ReceiptText,
   ShieldCheck,
   TrendingUp,
   Users,
@@ -18,6 +19,7 @@ import { NetworkTree } from "@/components/dashboard/network-tree";
 import { ProgramProgress } from "@/components/dashboard/program-progress";
 import { RebateRates } from "@/components/dashboard/rebate-rates";
 import { ReferralPanel } from "@/components/dashboard/referral-panel";
+import { RewardPaymentReport } from "@/components/dashboard/reward-payment-report";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { TransactionHistory } from "@/components/dashboard/transaction-history";
 import { SiteFooter } from "@/components/site-footer";
@@ -32,7 +34,8 @@ import { formatMoney, formatRate } from "@/lib/money";
 import { getActiveProgram } from "@/lib/program-config";
 import { getRebateRates } from "@/lib/rebate-config";
 import { getBalance, listTransactions } from "@/lib/services/ledger-service";
-import { getProgramProgress, getRewardOverview } from "@/lib/services/reward-service";
+import { getMemberDepositSummary } from "@/lib/services/manual-payment-service";
+import { getProgramProgress, getRewardOverview, listRewards } from "@/lib/services/reward-service";
 import {
   getReferralCommissionSummary,
   getReferralNetwork,
@@ -45,6 +48,9 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+/** Reward periods listed in the dashboard "Laporan Pembayaran Profit". */
+const REWARD_REPORT_ROWS = 8;
 
 interface DashboardSearchParams {
   welcome?: string;
@@ -60,17 +66,30 @@ export default async function DashboardPage({
   const user = await requireUser("/dashboard");
 
   const { program, tiers, cycles } = await getActiveProgram();
-  const [balance, progress, rewards, transactions, network, referralCommissions, rebateRates] =
-    await Promise.all([
-      getBalance(user.id),
-      getProgramProgress(user.id),
-      getRewardOverview(user.id),
-      listTransactions(user.id, 10),
-      getReferralNetwork({ id: user.id, username: user.username }),
-      getReferralCommissionSummary(user.id),
-      // The single rebate configuration shared with the admin screen and the engine.
-      getRebateRates(),
-    ]);
+  const [
+    balance,
+    progress,
+    rewards,
+    transactions,
+    network,
+    referralCommissions,
+    rebateRates,
+    deposits,
+    rewardRows,
+  ] = await Promise.all([
+    getBalance(user.id),
+    getProgramProgress(user.id),
+    getRewardOverview(user.id),
+    listTransactions(user.id, 10),
+    getReferralNetwork({ id: user.id, username: user.username }),
+    getReferralCommissionSummary(user.id),
+    // The single rebate configuration shared with the admin screen and the engine.
+    getRebateRates(),
+    // Deposit status and the profit report are read through the payment and reward
+    // services, so the dashboard never queries money tables on its own.
+    getMemberDepositSummary(user.id),
+    listRewards(user.id, { take: REWARD_REPORT_ROWS }),
+  ]);
 
   const referral = { directReferrals: network.counts[0] ?? 0, totalNetwork: network.total };
 
@@ -103,6 +122,21 @@ export default async function DashboardPage({
     description: row.description,
     postedAt: row.postedAt,
     createdAt: row.createdAt,
+  }));
+
+  // The report is presentation-only: the rate, amount, status and payout date all
+  // come from the stored reward rows, and the label from the shared status map.
+  const rewardReportRows = rewardRows.map((row) => ({
+    id: row.id,
+    period: row.period,
+    cycleNumber: row.cycleNumber,
+    tierCode: row.tierCode,
+    rate: row.rate,
+    amount: row.amount,
+    currency: balance.currency,
+    status: row.status,
+    statusLabel: statusLabel(row.status),
+    paidAt: row.paidAt,
   }));
 
   return (
@@ -200,11 +234,22 @@ export default async function DashboardPage({
             tone="gold"
           />
           <StatCard
-            label="Dana program"
+            label="Saldo deposit"
             value={formatMoney(balance.programFundsAmount, balance.currency)}
-            hint="Dana program tercatat (di luar saldo imbalan)"
+            hint={`Setoran yang sudah dikonfirmasi admin · di luar saldo imbalan (${deposits.approvedCount} disetujui)`}
             icon={Coins}
             tone="muted"
+          />
+          <StatCard
+            label="Deposit menunggu konfirmasi"
+            value={formatMoney(deposits.awaitingAmount, deposits.currency)}
+            hint={
+              deposits.awaitingCount > 0
+                ? `${deposits.awaitingCount} pengajuan menunggu verifikasi admin`
+                : "Tidak ada pengajuan yang menunggu verifikasi"
+            }
+            icon={ArrowDownToLine}
+            tone={deposits.awaitingCount > 0 ? "gold" : "muted"}
           />
           <StatCard
             label="Saldo ditahan"
@@ -236,6 +281,12 @@ export default async function DashboardPage({
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
+            <Link href="/deposit#riwayat-deposit">
+              <ReceiptText aria-hidden />
+              Riwayat deposit
+            </Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
             <Link href="/withdrawal">
               <ArrowUpFromLine aria-hidden />
               Penarikan dana
@@ -264,6 +315,8 @@ export default async function DashboardPage({
         </section>
 
         <RebateRates rows={rebateRows} />
+
+        <RewardPaymentReport rows={rewardReportRows} />
 
         <ProgramProgress programs={progress} />
 

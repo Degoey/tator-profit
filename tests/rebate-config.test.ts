@@ -1,12 +1,17 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { after, before, describe, it } from "node:test";
 
 import { Prisma, PrismaClient } from "@prisma/client";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { loadReferralOverview } from "../src/app/referral/overview";
 import { RebateRates } from "../src/components/dashboard/rebate-rates";
+import { referralLevelLabel } from "../src/lib/config/referral";
 import { REBATE_GENERATIONS, clearRebateConfigCache, getRebateRates, parseRebateRate } from "../src/lib/rebate-config";
+import { previewReferralCommissions } from "../src/lib/services/program-service";
 import { calculateReferralCommission } from "../src/lib/services/referral-service";
 import {
   RebateConfigError,
@@ -23,7 +28,15 @@ const prisma = new PrismaClient();
 const meta = { ipAddress: "198.18.8.9", userAgent: "node-test" };
 const DEFAULT_RATES = ["0.1000", "0.0200", "0.0100", "0.0100", "0.0100"];
 
+/** `npm test` selalu berjalan dari akar repositori. */
+const ROOT = process.cwd();
+
+function readProjectFile(...segments: string[]): string {
+  return readFileSync(path.join(ROOT, ...segments), "utf8");
+}
+
 let adminId = "";
+let adminUsername = "";
 
 async function resetRates(): Promise<void> {
   await prisma.$transaction(async (tx) => {
@@ -50,9 +63,10 @@ before(async () => {
       role: "ADMIN",
       adminRole: "SUPER_ADMIN",
     },
-    select: { id: true },
+    select: { id: true, username: true },
   });
   adminId = admin.id;
+  adminUsername = admin.username;
   await resetRates();
 });
 
@@ -223,5 +237,87 @@ describe("tampilan Persentase Komisi Rabat (render server)", () => {
     }
     assert.ok(!html.includes("Generasi 6"));
     assert.ok(html.includes("bukan jaminan nominal penghasilan"));
+  });
+});
+
+describe("permukaan rabat mengikuti konfigurasi admin", () => {
+  it("halaman rujukan menampilkan persentase tersimpan, bukan nilai bawaan", async () => {
+    await updateRebateConfig({
+      updates: [{ generation: 2, rate: "0.075" }],
+      actorUserId: adminId,
+      actorAdminRole: "SUPER_ADMIN",
+      meta,
+    });
+
+    const overview = await loadReferralOverview({
+      id: adminId,
+      username: adminUsername,
+      referralCode: null,
+    });
+
+    assert.deepEqual(
+      overview.levels.map((row) => row.level),
+      [1, 2, 3, 4, 5],
+    );
+    assert.deepEqual(
+      overview.levels.map((row) => row.rate),
+      ["10%", "7,5%", "1%", "1%", "1%"],
+    );
+    assert.equal(overview.levels[1]?.label, referralLevelLabel(2));
+
+    await resetRates();
+
+    const restored = await loadReferralOverview({
+      id: adminId,
+      username: adminUsername,
+      referralCode: null,
+    });
+    assert.deepEqual(
+      restored.levels.map((row) => row.rate),
+      ["10%", "2%", "1%", "1%", "1%"],
+    );
+  });
+
+  it("ilustrasi halaman depan memakai tarif tersimpan saat konfigurasi diberikan", async () => {
+    await updateRebateConfig({
+      updates: [{ generation: 1, rate: "0.08" }],
+      actorUserId: adminId,
+      actorAdminRole: "SUPER_ADMIN",
+      meta,
+    });
+
+    const live = previewReferralCommissions(new Prisma.Decimal(100), await getRebateRates());
+    assert.equal(live[0]?.rate, "0.0800");
+    assert.equal(live[0]?.amount, "8.00");
+
+    // Tanpa konfigurasi tersimpan, fungsi tetap memakai konfigurasi statis bersama.
+    const fallback = previewReferralCommissions(new Prisma.Decimal(100));
+    assert.equal(fallback[0]?.rate, "0.1000");
+    assert.equal(fallback[0]?.amount, "10.00");
+
+    await resetRates();
+  });
+
+  it("halaman rujukan dan halaman depan membaca konfigurasi dari database", () => {
+    const overviewSource = readProjectFile("src", "app", "referral", "overview.ts");
+    const landingSource = readProjectFile("src", "app", "page.tsx");
+
+    assert.ok(
+      overviewSource.includes("getRebateRates()"),
+      "halaman rujukan harus membaca konfigurasi rabat",
+    );
+    assert.equal(
+      overviewSource.includes("REFERRAL_LEVEL_RATES"),
+      false,
+      "halaman rujukan tidak boleh memakai tarif statis langsung",
+    );
+    assert.ok(
+      landingSource.includes("getRebateRates()"),
+      "halaman depan harus membaca konfigurasi rabat",
+    );
+    assert.ok(
+      landingSource.includes("previewReferralCommissions(referralBase, rebateRates)"),
+      "ilustrasi halaman depan harus memakai tarif tersimpan",
+    );
   });
 });

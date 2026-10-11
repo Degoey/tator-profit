@@ -229,6 +229,28 @@ async function main() {
     `anggota=${memberRoleApi.status} super=${adminRoleApi.status}`,
   );
 
+  // 6b. Referral commission settlement is protected on the server too: the queue
+  // is readable for any administrator (`read`), while changing it needs
+  // `manageFinance`, exactly like the deposit and withdrawal reviews.
+  const memberCommissionQueue = await member.request("/api/admin/commissions");
+  const adminCommissionQueue = await admin.request("/api/admin/commissions");
+  const memberCommissionAction = await member.request("/api/admin/commissions", {
+    body: { commissionId: "00000000-0000-4000-8000-000000000000", action: "PAY" },
+  });
+  check(
+    "antrean komisi admin hanya untuk administrator dan aksinya butuh manageFinance",
+    memberCommissionQueue.status === 403 &&
+      adminCommissionQueue.status === 200 &&
+      Array.isArray(adminCommissionQueue.body?.data?.rows) &&
+      memberCommissionAction.status === 403,
+    `anggota-baca=${memberCommissionQueue.status} super-baca=${adminCommissionQueue.status} anggota-aksi=${memberCommissionAction.status}`,
+  );
+  check(
+    "kartu komisi rujukan dirender pada /admin untuk administrator",
+    adminPage.status === 200 && adminPage.text.includes("Komisi rujukan"),
+    `status=${adminPage.status}`,
+  );
+
   // 7. Money is always rendered as USDT, never as a bare USD code or a `$` amount.
   // Next.js serialises data into inline <script> tags (where `$1` style references
   // appear), so only the visible markup is inspected.

@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type AdminRole } from "@prisma/client";
 import { createTestPrismaClient } from "./helpers/prisma";
 
+import { listCommissionsForAdmin } from "../src/lib/services/admin-commission-service";
 import { getBalance } from "../src/lib/services/ledger-service";
+import {
+  notificationHref,
+  notificationMetadataString,
+} from "../src/lib/services/notification-service";
 import { activateUserProgram, joinProgramTier } from "../src/lib/services/program-service";
 import {
   ReferralError,
@@ -23,7 +28,9 @@ import {
  *   root -> g1 -> g2 -> g3 -> g4 -> joiner
  *
  * so a posted PROGRAM_FUNDS entry for `joiner` must pay g4 (level 1), g3 (2),
- * g2 (3), g1 (4) and root (5). Tests share that chain and therefore run in
+ * g2 (3), g1 (4) and root (5). The administrator settlement surface (queue,
+ * capability checks, audit trail) is exercised on the very same rows at the end,
+ * once their statuses are known. Tests share that chain and therefore run in
  * declaration order; the `after` hook removes every row it created, including
  * the append-only ledger entries (the purge flag is scoped to its own
  * transaction).
@@ -50,7 +57,12 @@ const expectedBeneficiaryOrder: string[] = [];
 const createdUserIds: string[] = [];
 let userCounter = 0;
 
-async function createUser(label: string, role: "USER" | "ADMIN" = "USER") {
+async function createUser(
+  label: string,
+  role: "USER" | "ADMIN" = "USER",
+  /** Administrators default to FINANCE; pass another role to test the boundary. */
+  adminRole: AdminRole | null = role === "ADMIN" ? "FINANCE" : null,
+) {
   userCounter += 1;
   const username = `${label}_${stamp}`;
   const user = await prisma.user.create({
@@ -62,6 +74,7 @@ async function createUser(label: string, role: "USER" | "ADMIN" = "USER") {
       // A pre-computed bcrypt shaped hash: these accounts never sign in.
       passwordHash: "$2b$10$abcdefghijklmnopqrstuvABCDEFGHIJKLMNOPQRSTUVWXYZ012345",
       role,
+      adminRole,
     },
     select: { id: true, username: true },
   });
@@ -233,6 +246,37 @@ describe("mesin komisi rujukan lima tingkat (database)", () => {
       rows.every((row) => row.sourceReference === `program:${join.userProgramId}:funds`),
       "referensi sumber harus menunjuk entri buku besar dana program",
     );
+
+    // Setiap penerima komisi diberi tahu bahwa komisinya tercatat; akun di luar
+    // rantai tidak menerima apa pun. Notifikasi ditulis di transaksi aktivasi
+    // yang sama, jadi tidak mungkin ada pesan tanpa baris komisinya.
+    const notices = await prisma.notification.findMany({
+      where: { userId: { in: [...expectedBeneficiaryOrder, outsiderId] }, type: "REFERRAL" },
+      select: { userId: true, title: true, body: true, metadata: true },
+    });
+
+    assert.equal(notices.length, 5, "satu notifikasi untuk setiap generasi yang dibayar");
+    assert.equal(new Set(notices.map((notice) => notice.userId)).size, 5);
+
+    for (const notice of notices) {
+      const row = rows.find((candidate) => candidate.beneficiaryUserId === notice.userId);
+      assert.ok(row, "notifikasi hanya boleh dikirim ke penerima komisi");
+      assert.equal(notice.title, `Komisi rujukan tercatat: tingkat ${row.level}`);
+      assert.ok(
+        notice.body.includes(`Komisi rujukan tingkat ${row.level} sebesar USDT ${row.commissionAmount.toFixed(2)}`),
+        `notifikasi harus menyebut nominal komisi (isi: ${notice.body})`,
+      );
+      assert.equal(
+        notificationMetadataString(notice.metadata, "status"),
+        "PENDING",
+        "notifikasi pencatatan menandai status menunggu",
+      );
+      assert.equal(
+        notificationHref(notice.metadata),
+        "/referral",
+        "notifikasi harus menautkan halaman komisi member",
+      );
+    }
   });
 
   it("tidak mencatat komisi dua kali ketika peristiwa sumber diputar ulang", async () => {
@@ -250,6 +294,13 @@ describe("mesin komisi rujukan lima tingkat (database)", () => {
     assert.equal(
       await prisma.referralCommission.count({ where: { sourceTransactionId: source.id } }),
       5,
+    );
+    assert.equal(
+      await prisma.notification.count({
+        where: { userId: { in: expectedBeneficiaryOrder }, type: "REFERRAL" },
+      }),
+      5,
+      "pemutaran ulang tidak boleh mengirim pesan kedua ke member",
     );
   });
 
@@ -353,6 +404,18 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
       select: { status: true },
     });
     assert.equal(unchanged.status, "PENDING");
+    assert.equal(
+      await prisma.notification.count({
+        where: {
+          userId: g4Id,
+          type: "REFERRAL",
+          title: { startsWith: "Komisi rujukan " },
+          NOT: { title: { startsWith: "Komisi rujukan tercatat" } },
+        },
+      }),
+      0,
+      "percobaan tanpa wewenang tidak boleh menghasilkan kabar apa pun",
+    );
   });
 
   it("administrator menyetujui lalu membayar komisi sehingga saldo bertambah sekali", async () => {
@@ -368,6 +431,17 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
       meta,
     });
     assert.equal(approved.status, "APPROVED");
+    assert.equal(
+      await prisma.notification.count({
+        where: {
+          userId: g3Id,
+          type: "REFERRAL",
+          title: { startsWith: "Komisi rujukan dibayar" },
+        },
+      }),
+      0,
+      "persetujuan belum memindahkan uang sehingga belum ada kabar pembayaran",
+    );
 
     const before = await getBalance(g3Id);
     const paid = await setReferralCommissionStatus({
@@ -385,6 +459,23 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
       commission.commissionAmount.toFixed(2),
       "saldo harus bertambah tepat sebesar nilai komisi",
     );
+
+    // Kabar pembayaran ditulis di transaksi yang sama dengan pemindahan saldo.
+    const paidNotice = await prisma.notification.findFirstOrThrow({
+      where: { userId: g3Id, type: "REFERRAL", title: "Komisi rujukan dibayar: tingkat 2" },
+      select: { body: true, metadata: true },
+    });
+    assert.ok(
+      paidNotice.body.includes(`USDT ${commission.commissionAmount.toFixed(2)}`),
+      "notifikasi pembayaran harus menyebut nominal yang benar",
+    );
+    assert.equal(notificationMetadataString(paidNotice.metadata, "status"), "PAID");
+    assert.equal(
+      notificationMetadataString(paidNotice.metadata, "payoutReference"),
+      paid.payoutReference,
+      "notifikasi menunjuk referensi pembayaran yang sama dengan hasil pembayaran",
+    );
+    assert.equal(notificationHref(paidNotice.metadata), "/referral");
 
     const terminal = await captureError(() =>
       setReferralCommissionStatus({
@@ -404,7 +495,7 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
   it("mewajibkan alasan saat komisi ditolak atau dibatalkan", async () => {
     const commission = await prisma.referralCommission.findFirstOrThrow({
       where: { beneficiaryUserId: g2Id, level: 3 },
-      select: { id: true },
+      select: { id: true, level: true },
     });
 
     const noReason = await captureError(() =>
@@ -426,6 +517,24 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
       meta,
     });
     assert.equal(rejected.status, "REJECTED");
+
+    // Komisi yang ditolak juga diberitahukan, lengkap dengan alasan wajibnya.
+    const rejectedNotice = await prisma.notification.findFirstOrThrow({
+      where: {
+        userId: g2Id,
+        type: "REFERRAL",
+        title: `Komisi rujukan ditolak: tingkat ${commission.level}`,
+      },
+      select: { body: true, metadata: true },
+    });
+    assert.ok(rejectedNotice.body.includes("Alasan: Data program tidak sesuai"));
+    assert.equal(notificationMetadataString(rejectedNotice.metadata, "status"), "REJECTED");
+    assert.equal(
+      notificationMetadataString(rejectedNotice.metadata, "reason"),
+      "Data program tidak sesuai",
+      "alasan tersimpan di metadata, bukan hanya di badan teks",
+    );
+    assert.equal(notificationHref(rejectedNotice.metadata), "/referral");
 
     const stillPending = await prisma.referralCommission.findFirstOrThrow({
       where: { beneficiaryUserId: g4Id },
@@ -463,5 +572,125 @@ describe("siklus hidup dan pembatasan akses komisi rujukan (database)", () => {
     assert.equal(network.root.children[0]?.username.startsWith("g1_"), true);
     assert.equal(network.root.children[0]?.children[0]?.level, 2);
     assert.equal(network.root.children[0]?.children[0]?.children[0]?.children[0]?.children[0]?.level, 5);
+  });
+
+  it("antrean administrator memuat komisi dengan filter status dan pencarian", async () => {
+    const pending = await listCommissionsForAdmin({ search: `_${stamp}`, status: "PENDING" });
+
+    assert.equal(pending.total, 3, "tingkat 1, 4, dan 5 masih menunggu penyelesaian");
+    assert.equal(pending.rows.length, 3);
+    assert.ok(pending.rows.every((row) => row.status === "PENDING"));
+    assert.ok(pending.rows.every((row) => row.currency === "USDT"));
+    assert.ok(
+      pending.rows.every((row) => row.payoutReference === null),
+      "komisi yang belum dibayar tidak punya referensi pembayaran",
+    );
+
+    const g1Row = pending.rows.find((row) => row.beneficiaryUsername === `g1_${stamp}`);
+    assert.ok(g1Row, "antrean harus memuat komisi tingkat 4 milik g1");
+    assert.equal(g1Row.level, 4);
+    assert.equal(g1Row.beneficiaryName, "Uji g1");
+    assert.equal(g1Row.sourceUsername, `joiner_${stamp}`);
+    assert.equal(g1Row.commissionAmount, "1.00");
+    assert.equal(g1Row.baseAmount, "100.00");
+    assert.equal(g1Row.rate, "0.0100");
+
+    const paidRow = await listCommissionsForAdmin({ search: `g3_${stamp}`, status: "PAID" });
+    assert.equal(paidRow.total, 1);
+    assert.equal(paidRow.rows[0]?.beneficiaryUsername, `g3_${stamp}`);
+    assert.equal(
+      paidRow.rows[0]?.payoutReference,
+      `referral-commission:${(await prisma.referralCommission.findFirstOrThrow({
+        where: { beneficiaryUserId: g3Id, level: 2 },
+        select: { id: true },
+      })).id}:payout`,
+      "baris yang dibayar menunjuk entri ledger pembayarannya",
+    );
+
+    const rejected = await listCommissionsForAdmin({ search: `g2_${stamp}` });
+    assert.equal(rejected.total, 1, "pencarian kata kunci membatasi hasil pada satu penerima");
+    assert.equal(rejected.rows[0]?.status, "REJECTED");
+
+    // Paginasi: total selalu jumlah baris yang cocok, bukan jumlah baris halaman.
+    const firstPage = await listCommissionsForAdmin({ search: `_${stamp}`, take: 2 });
+    const secondPage = await listCommissionsForAdmin({ search: `_${stamp}`, take: 2, skip: 2 });
+    assert.equal(firstPage.total, 5);
+    assert.equal(firstPage.rows.length, 2);
+    assert.equal(secondPage.rows.length, 2);
+    assert.equal(
+      new Set([...firstPage.rows, ...secondPage.rows].map((row) => row.id)).size,
+      4,
+      "halaman tidak boleh mengulang baris yang sama",
+    );
+  });
+
+  it("administrator tanpa capability manageFinance tidak dapat menyelesaikan komisi", async () => {
+    const support = await createUser("admin-support", "ADMIN", "SUPPORT");
+    const noRole = await createUser("admin-tanpa-peran", "ADMIN", null);
+
+    const commission = await prisma.referralCommission.findFirstOrThrow({
+      where: { beneficiaryUserId: g4Id, level: 1 },
+      select: { id: true },
+    });
+
+    const actors: [string, string][] = [
+      ["SUPPORT", support.id],
+      ["tanpa peran admin", noRole.id],
+    ];
+
+    for (const [label, actorUserId] of actors) {
+      for (const action of ["APPROVE", "PAY", "REJECT"] as const) {
+        const error = await captureError(() =>
+          setReferralCommissionStatus({
+            commissionId: commission.id,
+            action,
+            actorUserId,
+            reason: action === "REJECT" ? "Uji wewenang komisi" : undefined,
+            meta,
+          }),
+        );
+
+        assert.ok(error instanceof ReferralError, `${label}/${action} harus ditolak`);
+        assert.equal((error as ReferralError).code, "FORBIDDEN", `${label}/${action}`);
+        assert.equal((error as ReferralError).status, 403, `${label}/${action}`);
+      }
+    }
+
+    const unchanged = await prisma.referralCommission.findUniqueOrThrow({
+      where: { id: commission.id },
+      select: { status: true },
+    });
+    assert.equal(unchanged.status, "PENDING", "percobaan tanpa wewenang tidak boleh mengubah status");
+  });
+
+  it("SUPER_ADMIN menyetujui komisi dan jejak auditnya memuat aktor", async () => {
+    const superAdmin = await createUser("admin-super", "ADMIN", "SUPER_ADMIN");
+    const commission = await prisma.referralCommission.findFirstOrThrow({
+      where: { beneficiaryUserId: g4Id, level: 1 },
+      select: { id: true },
+    });
+
+    const approved = await setReferralCommissionStatus({
+      commissionId: commission.id,
+      action: "APPROVE",
+      actorUserId: superAdmin.id,
+      meta,
+    });
+    assert.equal(approved.status, "APPROVED");
+    assert.equal(approved.payoutReference, null, "persetujuan belum memindahkan uang");
+
+    const audit = await prisma.auditLog.findFirstOrThrow({
+      where: { entityType: "ReferralCommission", entityId: commission.id },
+      orderBy: { createdAt: "desc" },
+      select: { action: true, actorUserId: true, before: true, after: true },
+    });
+    assert.equal(audit.action, "referral.commission.approve");
+    assert.equal(audit.actorUserId, superAdmin.id, "jejak audit menunjuk administrator pelakunya");
+    assert.equal(
+      (audit.before as { status?: string } | null)?.status,
+      "PENDING",
+      "snapshot sebelum aksi tersimpan",
+    );
+    assert.equal((audit.after as { status?: string } | null)?.status, "APPROVED");
   });
 });

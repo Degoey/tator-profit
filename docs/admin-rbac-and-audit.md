@@ -106,7 +106,8 @@ dapat dieksekusi sebagai formula oleh aplikasi spreadsheet.
   alamat IP, user agent, dan alasan/referensi di dalam snapshot.
 - Aksi yang tercatat: kredit/penyesuaian saldo (`admin.credit_granted`), persetujuan dan
   penolakan setoran (`deposit.*`), setiap perubahan status penarikan (`withdrawal.*`),
-  perubahan konfigurasi program dan imbalan (`program.*`, `reward.*`), serta perubahan
+  perubahan konfigurasi program dan imbalan (`program.*`, `reward.*`), penyelesaian komisi
+  rujukan (`referral.commission.*`), serta perubahan
   peran administrator (`admin.role_assigned`). Peristiwa keamanan (login, login gagal,
   logout, reset kata sandi, rate limit) tercatat di `SecurityEvent`.
 - Persentase **Komisi Rabat** lima generasi kini tersimpan di tabel `RebateConfig` dan
@@ -149,6 +150,36 @@ lain tidak dapat memakainya lewat `/api/admin/fraud`. Setiap keputusan wajib ber
 tertulis dan menghasilkan satu baris `AuditLog` (`fraud.review.cleared` /
 `fraud.review.confirmed`). Rincian sinyal dan batasnya ada di
 `docs/anti-fraud-multi-account.md`.
+
+## 6d. Penyelesaian komisi rujukan (G2)
+
+Komisi rujukan **tidak lagi menggantung menunggu selamanya**: kartu **Komisi rujukan** pada
+`/admin` menampilkan 100 baris terbaru (`listCommissionsForAdmin`) beserta penerima, tingkat,
+nilai, referensi sumber, dan referensi pembayarannya. Antrean dimuat di server — perannya
+sudah dijaga `requireAdminCapability("read")` — dan hanya dirender ulang setelah tindakan
+berhasil, sehingga layar tidak pernah menebak status baru.
+
+- `GET /api/admin/commissions` — kemampuan `read` (SUPER_ADMIN, FINANCE, SUPPORT, COMPLIANCE,
+  VIEWER). Mendukung `status`, `search`, `take` (maks. 200), dan `skip`.
+- `POST /api/admin/commissions` — kemampuan `manageFinance` (SUPER_ADMIN/FINANCE), menolak
+  permintaan lintas situs, dan dibatasi 120 permintaan per menit per administrator.
+- Aksi: `APPROVE` (PENDING → APPROVED), `PAY` (APPROVED → PAID), `REJECT` dan `VOID`
+  (PENDING/APPROVED → REJECTED/VOID, **wajib alasan** minimal 3 karakter, divalidasi dua kali:
+  oleh skema zod dan oleh service). PAID bersifat final.
+- `PAY` menulis entri `REFERRAL_REWARD` ke bucket `AVAILABLE` penerima di dalam **transaksi
+  yang sama** dengan perubahan status, lalu menyimpan `payoutTransactionId` (unik). Jadi
+  "dibayar" berarti saldo dalam aplikasi bertambah — uang keluar dari platform tetap melalui
+  penarikan manual berjalur bukti transfer.
+- Perubahan status dijalankan sebagai *compare-and-set* di dalam transaksi serializable, dan
+  service memeriksa ulang peran administrator langsung dari database (bukan dari muatan
+  permintaan), sehingga peran SUPPORT/COMPLIANCE/VIEWER maupun akun tanpa peran tidak dapat
+  memakainya walaupun mengirim permintaan langsung ke rute.
+- Setiap aksi menulis satu baris `AuditLog` `referral.commission.<aksi>` dengan snapshot
+  `before`/`after`, aktor, dan alasan, dan panel menampilkan riwayat audit per baris komisi.
+- Anggota menerima notifikasi `REFERRAL` di transaksi yang sama dengan perubahannya: saat
+  komisi tercatat, saat dibayar, saat ditolak, dan saat dibatalkan (APPROVE sengaja diam
+  karena uang belum berpindah). Teks dan pengujiannya ada di `tests/referral-notifications.test.ts`
+  dan `tests/commission-admin.test.ts`; sisi datanya di `tests/referral-engine.test.ts`.
 
 ## 7. Halaman akun dan kebijakan (Bagian 7/7)
 

@@ -2,6 +2,7 @@ import { Download, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
+import { AdminCommissionReview } from "@/components/payments/admin-commission-review";
 import { AdminCreditForm, CreditPermissionNote } from "@/components/payments/admin-credit-form";
 import { AdminDepositReview } from "@/components/payments/admin-deposit-review";
 import { AdminRebateSettings } from "@/components/payments/admin-rebate-settings";
@@ -21,6 +22,7 @@ import { canAdmin, canReviewDepositAction } from "@/lib/auth/admin-permissions";
 import { requireAdminCapability } from "@/lib/auth/current-user";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
+import { listCommissionsForAdmin } from "@/lib/services/admin-commission-service";
 import { listAdministrators } from "@/lib/services/admin-role-service";
 import { countOpenFraudCases } from "@/lib/services/anti-fraud-service";
 import { listRebateConfig } from "@/lib/services/rebate-config-service";
@@ -57,6 +59,8 @@ export default async function AdminPage() {
   const canManageUsers = canAdmin(admin.adminRole, "manageUsers");
   /** Rebate percentages are editable by SUPER_ADMIN/FINANCE (`manageFinance`). */
   const canManageRebate = canAdmin(admin.adminRole, "manageFinance");
+  /** Settling a referral commission moves money, so it needs the same capability. */
+  const canManageCommissions = canManageRebate;
   /** The anti-fraud queue is readable by SUPER_ADMIN/FINANCE/COMPLIANCE. */
   const canReadFraud = canAdmin(admin.adminRole, "readFraud");
 
@@ -139,11 +143,13 @@ export default async function AdminPage() {
   const administrators = canManageUsers ? await listAdministrators() : [];
   /** The shared rebate configuration; every administrator may read it. */
   const rebateConfig = await listRebateConfig();
+  /** The commission settlement queue; every administrator holding `read` loads it. */
+  const commissionQueue = await listCommissionsForAdmin({ take: 100 });
   /** Open anti-fraud cases; children of `readFraud` never load the counter. */
   const openFraudCases = canReadFraud ? await countOpenFraudCases() : 0;
   const requestAuditEntries = canReadAudit
     ? await prisma.auditLog.findMany({
-        where: { entityType: { in: ["DepositRequest", "WithdrawalRequest"] } },
+        where: { entityType: { in: ["DepositRequest", "WithdrawalRequest", "ReferralCommission"] } },
         orderBy: { createdAt: "desc" },
         take: 1000,
         select: {
@@ -167,6 +173,7 @@ export default async function AdminPage() {
     membershipsActive,
     rewardsPaidSum,
     commissionsPaidSum,
+    commissionsPendingSum,
     adminActivityRows,
     creditsCount,
     creditsSum,
@@ -178,6 +185,11 @@ export default async function AdminPage() {
     prisma.reward.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
     prisma.referralCommission.aggregate({
       where: { status: "PAID" },
+      _sum: { commissionAmount: true },
+    }),
+    // Komisi yang belum masuk saldo anggota: menunggu atau baru disetujui.
+    prisma.referralCommission.aggregate({
+      where: { status: { in: ["PENDING", "APPROVED"] } },
       _sum: { commissionAmount: true },
     }),
     // "Aktivitas admin 24 jam" dihitung oleh database (NOW() - 24 jam) sehingga
@@ -243,6 +255,15 @@ export default async function AdminPage() {
     requestAuditByEntityId.set(entry.entityId, list);
   }
 
+  /**
+   * Commission rows with their own audit history attached; the dialog stays
+   * read-only unless the administrator also holds `manageFinance`.
+   */
+  const commissionRows = commissionQueue.rows.map((row) => ({
+    ...row,
+    auditHistory: requestAuditByEntityId.get(row.id) ?? [],
+  }));
+
 
   return (
     <PaymentShell
@@ -266,6 +287,9 @@ export default async function AdminPage() {
         </Badge>
         <Badge variant={canReviewWithdrawal ? "default" : "muted"}>
           {canReviewWithdrawal ? "Dapat meninjau penarikan" : "Penarikan hanya baca"}
+        </Badge>
+        <Badge variant={canManageCommissions ? "default" : "muted"}>
+          {canManageCommissions ? "Dapat menyelesaikan komisi" : "Komisi hanya baca"}
         </Badge>
         <CreditPermissionNote allowed={canCredit} />
         <Badge variant={canReadAudit ? "default" : "muted"}>
@@ -320,6 +344,12 @@ export default async function AdminPage() {
             label: "Komisi rujukan",
             value: String(commissionsTotal),
             hint: `Dibayar ${formatMoney(commissionsPaidSum._sum.commissionAmount ?? 0)}`,
+          },
+          {
+            label: "Komisi menunggu penyelesaian",
+            value: formatMoney(commissionsPendingSum._sum.commissionAmount ?? 0),
+            tone: "gold",
+            hint: "Status menunggu atau disetujui, belum masuk saldo anggota",
           },
           ...(canReadFraud
             ? [
@@ -483,6 +513,21 @@ export default async function AdminPage() {
               };
             })}
           />
+        </CardContent>
+      </Card>
+
+      <Card id="komisi">
+        <CardHeader>
+          <CardTitle>Komisi rujukan</CardTitle>
+          <CardDescription>
+            100 baris komisi terbaru. &ldquo;Bayar&rdquo; mengkredit saldo tersedia anggota di buku besar dalam
+            satu transaksi yang sama dengan perubahan status; uang keluar dari platform tetap lewat
+            penarikan manual. Anggota otomatis menerima notifikasi pada setiap perubahan status
+            komisinya.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <AdminCommissionReview rows={commissionRows} canManage={canManageCommissions} />
         </CardContent>
       </Card>
 

@@ -17,6 +17,7 @@ import {
   referralRateForLevel,
   type ReferralEligibleEventConfig,
 } from "@/lib/config/referral";
+import { canAdmin } from "@/lib/auth/admin-permissions";
 import { MAX_MONEY, MONEY_SCALE, toDecimal, type DecimalInput } from "@/lib/money";
 import { getRebateRates, rebateRateForGeneration } from "@/lib/rebate-config";
 import { prisma } from "@/lib/prisma";
@@ -25,6 +26,10 @@ import {
   type NetworkNode,
   type ReferralNetwork,
 } from "@/lib/referral-network";
+import {
+  referralCommissionRecordedNotification,
+  referralCommissionSettledNotification,
+} from "@/lib/referral-notifications";
 import type { RequestMeta } from "@/lib/security";
 import { postLedgerEntry } from "@/lib/services/ledger-service";
 
@@ -681,6 +686,31 @@ export async function postReferralCommissionsForTransaction(
     },
   });
 
+  // Every beneficiary is told about their own commission, written with the same
+  // transaction client as the rows above: a rolled back activation leaves neither
+  // a commission nor a message, and the notification is built from `created` (the
+  // fresh, non-duplicate rows only), so a replayed event sends nothing twice.
+  for (const row of created) {
+    const notice = referralCommissionRecordedNotification({
+      commissionId: row.id,
+      level: row.level,
+      amount: row.commissionAmount.toFixed(2),
+      currency: row.currency,
+      sourceUserId: sourceTransaction.userId,
+      sourceReference: sourceTransaction.reference,
+    });
+
+    await client.notification.create({
+      data: {
+        userId: row.beneficiaryUserId,
+        type: "REFERRAL",
+        title: notice.title,
+        body: notice.body,
+        metadata: notice.metadata,
+      },
+    });
+  }
+
   return {
     status: "CREATED",
     reason: `${created.length} komisi rujukan dicatat sebagai MENUNGGU.`,
@@ -877,12 +907,12 @@ export async function setReferralCommissionStatus(input: {
 }): Promise<ReferralCommissionActionResult> {
   const actor = await prisma.user.findUnique({
     where: { id: input.actorUserId },
-    select: { role: true, status: true },
+    select: { role: true, status: true, adminRole: true },
   });
-  if (!actor || actor.role !== "ADMIN" || actor.status !== "ACTIVE") {
+  if (!actor || actor.role !== "ADMIN" || actor.status !== "ACTIVE" || !canAdmin(actor.adminRole, "manageFinance")) {
     throw new ReferralError(
       "FORBIDDEN",
-      "Hanya administrator aktif yang dapat mengubah status komisi rujukan.",
+      "Aksi komisi memerlukan administrator aktif SUPER_ADMIN atau FINANCE.",
       403,
     );
   }
@@ -921,6 +951,19 @@ export async function setReferralCommissionStatus(input: {
 
   return prisma.$transaction(
     async (tx) => {
+      // Compare-and-set before touching the ledger. A stale/concurrent request
+      // must roll back, never overwrite a terminal decision or duplicate a notice.
+      const changed = await tx.referralCommission.updateMany({
+        where: { id: commission.id, status: commission.status },
+        data: {
+          status: target,
+          approvedAt: input.action === "APPROVE" ? now : undefined,
+          paidAt: input.action === "PAY" ? now : undefined,
+        },
+      });
+      if (changed.count !== 1) {
+        throw new ReferralError("INVALID_COMMISSION_STATUS", "Status komisi telah berubah. Muat ulang antrean.", 409);
+      }
       let payoutTransactionId: string | null = null;
       let payoutReference: string | null = null;
 
@@ -966,6 +1009,34 @@ export async function setReferralCommissionStatus(input: {
           ipAddress: input.meta?.ipAddress ?? null,
         },
       });
+
+      // The member is told in the same transaction that moved the money: PAID
+      // announces the balance that was just credited, REJECT/VOID carries the
+      // mandatory reason, and APPROVE stays silent (no money moved yet), exactly
+      // like the weekly reward lifecycle.
+      if (input.action !== "APPROVE") {
+        const notice = referralCommissionSettledNotification({
+          action: input.action,
+          commissionId: commission.id,
+          level: commission.level,
+          amount: commission.commissionAmount.toFixed(2),
+          currency: commission.currency,
+          status: updated.status,
+          sourceUserId: commission.sourceUserId,
+          payoutReference,
+          reason: input.reason ?? null,
+        });
+
+        await tx.notification.create({
+          data: {
+            userId: commission.beneficiaryUserId,
+            type: "REFERRAL",
+            title: notice.title,
+            body: notice.body,
+            metadata: notice.metadata,
+          },
+        });
+      }
 
       return {
         commissionId: updated.id,

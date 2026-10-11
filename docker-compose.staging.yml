@@ -1,0 +1,88 @@
+# =============================================================================
+# TatorProfit — STAGING di VPS.
+#
+# Perbedaan penting dari `docker-compose.yml` (yang berorientasi pengembangan
+# lokal):
+#   1. Port PostgreSQL TIDAK dipublish ke host — DB hanya terlihat di jaringan
+#      Compose (tidak pernah terbuka ke internet).
+#   2. Kredensial DB datang dari `.env.staging`, bukan nilai hard-code.
+#   3. Nama container unik agar tidak bertabrakan dengan stack lain di VPS.
+#   4. Container app TIDAK mempublikasikan port secara default; reverse proxy
+#      (Nginx) yang menghadap publik. Batalkan komentar `ports` hanya bila perlu
+#      mengakses langsung untuk diagnosa.
+#
+# Pemakaian (di VPS, dari root repositori):
+#   docker compose -p tatorprofit-staging --env-file .env.staging \
+#     -f docker-compose.staging.yml build
+#   docker compose -p tatorprofit-staging --env-file .env.staging \
+#     -f docker-compose.staging.yml up -d
+#
+# `.env.staging` berisi rahasia: JANGAN commit, `chmod 600`.
+# =============================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tatorprofit-staging-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?set POSTGRES_USER in .env.staging}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.staging}"
+      POSTGRES_DB: "${POSTGRES_DB:?set POSTGRES_DB in .env.staging}"
+    # Tidak ada `ports:` — PostgreSQL tidak boleh dijangkau dari internet.
+    volumes:
+      - tatorprofit-staging-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Nilai publik yang di-*inline* saat build. Rahasia TIDAK pernah jadi build arg.
+      args:
+        NEXT_PUBLIC_APP_URL: "${NEXT_PUBLIC_APP_URL:-https://staging.tatorprofit.example}"
+        NEXT_PUBLIC_WHATSAPP_CS_NUMBER: "${NEXT_PUBLIC_WHATSAPP_CS_NUMBER:-62xxxxxxxxxx}"
+    image: tator-profit-staging
+    container_name: tatorprofit-staging-app
+    restart: unless-stopped
+    environment:
+      # URL internal jaringan Compose; kredensial dari .env.staging.
+      DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+      # Staging diperlakukan seperti produksi oleh aplikasi.
+      NODE_ENV: "staging"
+      AUTH_TOKEN_SECRET: "${AUTH_TOKEN_SECRET:?set AUTH_TOKEN_SECRET in .env.staging}"
+      NEXT_PUBLIC_APP_URL: "${NEXT_PUBLIC_APP_URL:-https://staging.tatorprofit.example}"
+      NEXT_PUBLIC_WHATSAPP_CS_NUMBER: "${NEXT_PUBLIC_WHATSAPP_CS_NUMBER:-62xxxxxxxxxx}"
+      # Di belakang Nginx tepercaya pada VPS ini.
+      TRUST_PROXY_HEADERS: "${TRUST_PROXY_HEADERS:-1}"
+      PAYMENT_PROOF_DIR: "/app/storage/payment-proofs"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    # Hanya bind ke localhost; Nginx (host) yang meneruskan lalu lintas.
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      # Bukti pembayaran privat bertahan melewati redeploy.
+      - tatorprofit-staging-storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Terapkan migrasi tertunda sebelum melayani lalu lintas, lalu jalankan server.
+    # Migrasi dijalankan via `prisma migrate deploy` (bukan `migrate dev`).
+    command:
+      - sh
+      - -c
+      - "node node_modules/prisma/build/index.js migrate deploy && node server.js"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  tatorprofit-staging-pgdata:
+  tatorprofit-staging-storage:

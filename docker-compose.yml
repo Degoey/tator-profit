@@ -17,5 +17,51 @@ services:
       timeout: 5s
       retries: 10
 
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # Public values only: they are inlined into the client bundle at build time.
+      # Secrets are NEVER passed as build args — they arrive at runtime below.
+      args:
+        NEXT_PUBLIC_APP_URL: "${NEXT_PUBLIC_APP_URL:-http://localhost:3000}"
+        NEXT_PUBLIC_WHATSAPP_CS_NUMBER: "${NEXT_PUBLIC_WHATSAPP_CS_NUMBER:-62xxxxxxxxxx}"
+    image: tator-profit
+    container_name: tatorprofit-app
+    restart: unless-stopped
+    # `.env` is read at RUNTIME and is never copied into the image
+    # (see .dockerignore). The overrides below win over it.
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the database is reached by service name, not
+      # localhost — the value in `.env` points at the host machine.
+      DATABASE_URL: "postgresql://tatorprofit:tatorprofit@postgres:5432/tatorprofit?schema=public"
+      PAYMENT_PROOF_DIR: "/app/storage/payment-proofs"
+      NODE_ENV: "production"
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+    ports:
+      - "3000:3000"
+    volumes:
+      # Private payment proofs live outside the image and survive redeploys.
+      - tatorprofit-storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Apply pending migrations before serving traffic, then start the standalone
+    # Next.js server. The Prisma CLI ships in the image; no network access needed.
+    command:
+      - sh
+      - -c
+      - "node node_modules/prisma/build/index.js migrate deploy && node server.js"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   tatorprofit-pgdata:
+  tatorprofit-storage:

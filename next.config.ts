@@ -21,6 +21,13 @@ const nextConfig: NextConfig = {
   typedRoutes: false,
   poweredByHeader: false,
   /**
+   * `standalone` emits `.next/standalone` with a self-contained `server.js` and
+   * only the traced dependencies. The production Docker image copies that folder
+   * instead of the whole repository + node_modules. `npm run dev` and `npm run
+   * build` behave the same locally; only the output layout changes.
+   */
+  output: "standalone",
+  /**
    * Hosts allowed to load Next.js *dev* resources (HMR socket, `/_next/*`
    * chunks). Only the dev server consults this list; production builds ignore
    * it. Needed when a phone or Android WebView reaches `npm run dev` through a

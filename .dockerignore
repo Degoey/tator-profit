@@ -1,0 +1,49 @@
+# Build context exclusions — keep the image small and free of secrets.
+# Anything listed here is never sent to the Docker daemon during `docker build`.
+
+# Dependencies and build output are rebuilt inside the image.
+node_modules
+.next
+out
+build
+next-env.d.ts
+
+# Secrets and local environment: NEVER copied into the image.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+secrets/
+credentials/
+
+# Private uploaded payment proofs: runtime data, mounted as a volume instead.
+storage
+*.log
+
+# Version control and editor noise.
+.git
+.gitignore
+.github
+.vscode
+.idea
+.DS_Store
+*.tsbuildinfo
+.eslintcache
+coverage
+.prisma
+
+# Android wrapper, docs, QA artefacts and local database dumps: not needed to run
+# the web app.
+android
+docs
+qa-*.txt
+qa-*.sql
+qa-*.log
+*.dump
+*.sql.gz
+backups
+database
+hs_err_pid*.log
+dev*.log

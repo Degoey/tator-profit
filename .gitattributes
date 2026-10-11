@@ -1,0 +1,19 @@
+# Kebijakan line ending.
+#
+# Skrip shell dijalankan di VPS Linux. Bila tersimpan dengan CRLF, bash gagal
+# dengan "bad interpreter: /usr/bin/env bash^M". Karena itu skrip .sh WAJIB LF.
+*.sh text eol=lf
+
+# Konfigurasi yang juga dijalankan/disalin ke host Linux: jaga LF agar portabel.
+Dockerfile text eol=lf
+docker-compose*.yml text eol=lf
+*.conf text eol=lf
+
+# Berkas biner: jangan pernah diubah.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

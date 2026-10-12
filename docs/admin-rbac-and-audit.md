@@ -23,6 +23,20 @@ baru tidak punya kemampuan finansial sampai diberikan secara eksplisit (fail clo
 | `manageUsers` (ubah peran admin) | ya | tidak | tidak | tidak | tidak |
 | `readFraud` (antrean anti-fraud) | ya | ya | ya | tidak | tidak |
 | `reviewFraud` (putuskan kasus anti-fraud) | ya | **tidak** | ya | tidak | tidak |
+| `readTrading` (baca catatan & laporan profit trading) | ya | ya | ya | ya | ya |
+| `manageTrading` (catat/impor/rekonsiliasi trading) | ya | ya | tidak | tidak | tidak |
+| `approveTradingReport` (setujui/terbitkan laporan) | ya | ya | tidak | tidak | tidak |
+| `recordProfitPayment` (catat/verifikasi pembayaran profit) | ya | ya | tidak | tidak | tidak |
+| `readTradingAudit` (jejak audit modul trading) | ya | ya | ya | tidak | tidak |
+
+Kapabilitas modul Profit Trading sengaja dipisah dari `manageFinance` supaya pemisahan
+tugas (*maker/checker*) nyata: orang yang mencatat/mengimpor catatan trading
+(`manageTrading`) tidak otomatis boleh menyetujui laporan (`approveTradingReport`) atau
+mencatat pembayaran (`recordProfitPayment`). COMPLIANCE dapat membaca laporan beserta
+jejak auditnya, tetapi tidak dapat mengubah apa pun; SUPPORT dan VIEWER hanya membaca.
+Kebijakan "penyetuju harus berbeda dari pembuat laporan" masih **menunggu keputusan
+pemilik** (§10 dokumen audit modul trading); sampai diputuskan, sistem memakai aturan
+konservatif dan mencatat siapa melakukan apa.
 
 ¹ COMPLIANCE boleh memindahkan setoran ke `UNDER_REVIEW` atau `FLAGGED` saja
 (`canReviewDepositAction`); menyetujui/menolak uang tetap milik SUPER_ADMIN/FINANCE.

@@ -710,7 +710,10 @@ describe("integrasi rute, halaman, dan izin", () => {
 
     assert.match(schema, /model FraudReview \{/);
     assert.match(schema, /enum FraudReviewStatus \{/);
-    assert.match(schema, /registrationIp String\?/);
+    // `prisma format` menyelaraskan spasi antar kolom pada satu model, jadi
+    // pemisah antar kolom dicocokkan secara longgar: yang diuji adalah tipe
+    // nullable-nya, bukan perataan kosmetik berkas skema.
+    assert.match(schema, /registrationIp\s+String\?/);
     assert.match(schema, /enum SecurityEventType \{[\s\S]*?FRAUD_FLAGGED/);
   });
 

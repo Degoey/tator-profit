@@ -16,6 +16,20 @@ import type { AdminRole } from "@prisma/client";
  *  - the audit trail and the anti-fraud queue are limited to SUPER_ADMIN,
  *    FINANCE and COMPLIANCE, and only SUPER_ADMIN/COMPLIANCE may close a
  *    fraud case (`reviewFraud`); FINANCE may read it but never decide it.
+ *
+ * Modul Profit Trading (hasil trading aktual) menambah kapabilitas tersendiri
+ * supaya pemisahan tugas (maker/checker) nyata dan tidak menumpang `manageFinance`:
+ *
+ *  - `readTrading` — membaca catatan & laporan trading; dimiliki seluruh peran admin
+ *    karena laporan yang sudah terbit memang dibaca banyak pihak;
+ *  - `manageTrading` — mencatat/mengimpor/merekonsiliasi catatan trading;
+ *  - `approveTradingReport` — menyetujui & menerbitkan laporan;
+ *  - `recordProfitPayment` — mencatat/memverifikasi pembayaran profit;
+ *  - `readTradingAudit` — membuka jejak audit modul trading.
+ *
+ * Keempat kapabilitas tulis hanya diberikan kepada SUPER_ADMIN dan FINANCE;
+ * COMPLIANCE boleh membaca laporan beserta jejak auditnya, sedangkan SUPPORT dan
+ * VIEWER hanya boleh membaca laporan.
  */
 export type AdminPermission =
   | "read"
@@ -27,7 +41,12 @@ export type AdminPermission =
   | "creditBalance"
   | "manageUsers"
   | "readFraud"
-  | "reviewFraud";
+  | "reviewFraud"
+  | "readTrading"
+  | "manageTrading"
+  | "approveTradingReport"
+  | "recordProfitPayment"
+  | "readTradingAudit";
 
 export const ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "read",
@@ -40,6 +59,11 @@ export const ADMIN_PERMISSIONS: readonly AdminPermission[] = [
   "manageUsers",
   "readFraud",
   "reviewFraud",
+  "readTrading",
+  "manageTrading",
+  "approveTradingReport",
+  "recordProfitPayment",
+  "readTradingAudit",
 ];
 
 export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[]> = {
@@ -53,10 +77,23 @@ export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[
     "manageFinance",
     "creditBalance",
     "readFraud",
+    "readTrading",
+    "manageTrading",
+    "approveTradingReport",
+    "recordProfitPayment",
+    "readTradingAudit",
   ],
-  COMPLIANCE: ["read", "readProof", "readAudit", "readFraud", "reviewFraud"],
-  SUPPORT: ["read", "readProof"],
-  VIEWER: ["read"],
+  COMPLIANCE: [
+    "read",
+    "readProof",
+    "readAudit",
+    "readFraud",
+    "reviewFraud",
+    "readTrading",
+    "readTradingAudit",
+  ],
+  SUPPORT: ["read", "readProof", "readTrading"],
+  VIEWER: ["read", "readTrading"],
 };
 
 /** Missing role is deliberately denied; no implicit super-admin fallback. */

@@ -79,7 +79,9 @@ describe("matriks izin admin eksplisit", () => {
   });
 
   it("menjaga VIEWER tetap hanya-baca", () => {
-    assert.deepEqual([...adminPermissionsOf("VIEWER")], ["read"]);
+    // VIEWER hanya boleh membaca; hak baca laporan trading yang sudah terbit
+    // diberikan agar laporan dapat ditinjau tanpa kemampuan mengubah apa pun.
+    assert.deepEqual([...adminPermissionsOf("VIEWER")], ["read", "readTrading"]);
     for (const permission of [
       "readAudit",
       "reviewDeposit",
@@ -223,5 +225,53 @@ describe("assertSameOrigin", () => {
     });
 
     assert.equal(assertSameOrigin(request), true);
+  });
+});
+
+describe("kapabilitas modul Profit Trading", () => {
+  const TRADING_WRITE = [
+    "manageTrading",
+    "approveTradingReport",
+    "recordProfitPayment",
+  ] as AdminPermission[];
+
+  it("membuka pembacaan laporan trading untuk semua peran admin", () => {
+    for (const role of ALL_ROLES) {
+      assert.equal(canAdmin(role, "readTrading"), true, `role=${role}`);
+    }
+  });
+
+  it("membatasi pencatatan, persetujuan, dan pembayaran pada SUPER_ADMIN dan FINANCE", () => {
+    for (const permission of TRADING_WRITE) {
+      const allowed = ALL_ROLES.filter((role) => canAdmin(role, permission));
+      assert.deepEqual([...allowed].sort(), ["FINANCE", "SUPER_ADMIN"], `permission=${permission}`);
+    }
+  });
+
+  it("membatasi jejak audit trading pada SUPER_ADMIN, FINANCE, dan COMPLIANCE", () => {
+    const allowed = ALL_ROLES.filter((role) => canAdmin(role, "readTradingAudit"));
+
+    assert.deepEqual([...allowed].sort(), ["COMPLIANCE", "FINANCE", "SUPER_ADMIN"]);
+  });
+
+  it("menjaga SUPPORT dan VIEWER tidak dapat mengubah apa pun di modul trading", () => {
+    for (const role of ["SUPPORT", "VIEWER"] as const) {
+      for (const permission of TRADING_WRITE) {
+        assert.equal(canAdmin(role, permission), false, `role=${role} permission=${permission}`);
+      }
+      assert.equal(canAdmin(role, "readTradingAudit"), false, `role=${role}`);
+    }
+  });
+
+  it("menolak akun tanpa peran admin untuk seluruh kapabilitas trading", () => {
+    for (const role of [null, undefined]) {
+      for (const permission of [
+        "readTrading",
+        ...TRADING_WRITE,
+        "readTradingAudit",
+      ] as AdminPermission[]) {
+        assert.equal(canAdmin(role, permission), false);
+      }
+    }
   });
 });

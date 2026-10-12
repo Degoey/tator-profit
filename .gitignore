@@ -49,3 +49,6 @@ android/dist/
 *.aab
 *.ap_
 
+
+# Berkas kerja sementara lokal (mis. salinan schema) — jangan di-commit.
+tmp/

@@ -1,6 +1,7 @@
 import { ArrowRight, BadgeCheck, CircleDollarSign, Layers, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 
+import { CryptoMarketSection } from "@/components/landing/crypto-market-section";
 import { DepositSection } from "@/components/landing/deposit-section";
 import { ReferralSection } from "@/components/landing/referral-section";
 import { TierSection } from "@/components/landing/tier-section";
@@ -190,6 +191,8 @@ export default async function LandingPage() {
             </Card>
           </div>
         </section>
+
+        <CryptoMarketSection />
 
         <TierSection
           tiers={tiers}

@@ -27,6 +27,7 @@ export async function SiteHeader() {
       ]
     : [
         { href: "/programs", label: "Program" },
+        { href: "/#market", label: "Papan Pasar" },
         { href: "/#tiers", label: "Pilihan Paket" },
         { href: "/#deposit", label: "Setor Dana" },
         { href: "/#program", label: "Ketentuan Program" },

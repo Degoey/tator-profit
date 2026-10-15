@@ -19,7 +19,7 @@ baru tidak punya kemampuan finansial sampai diberikan secara eksplisit (fail clo
 | `reviewDeposit` (setujui/tolak setoran) | ya | ya | tidak¹ | tidak | tidak |
 | `reviewWithdrawal` (tinjau penarikan) | ya | ya | tidak | tidak | tidak |
 | `manageFinance` (program/imbalan) | ya | ya | tidak | tidak | tidak |
-| `creditBalance` (kredit saldo) | ya | ya | tidak | tidak | tidak |
+| `creditBalance` (kredit saldo) | ya | tidak | tidak | tidak | tidak |
 | `manageUsers` (ubah peran admin) | ya | tidak | tidak | tidak | tidak |
 | `readFraud` (antrean anti-fraud) | ya | ya | ya | tidak | tidak |
 | `reviewFraud` (putuskan kasus anti-fraud) | ya | **tidak** | ya | tidak | tidak |

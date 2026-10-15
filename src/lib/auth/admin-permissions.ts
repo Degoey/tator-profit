@@ -8,7 +8,10 @@ import type { AdminRole } from "@prisma/client";
  * UI without guessing. The rules that the whole platform relies on:
  *
  *  - money only moves for SUPER_ADMIN and FINANCE (`reviewDeposit`,
- *    `reviewWithdrawal`, `manageFinance`, `creditBalance`);
+ *    `reviewWithdrawal`, `manageFinance`);
+ *  - crediting a member balance (`creditBalance`, i.e. creating USDT) is
+ *    SUPER_ADMIN only: FINANCE runs every money queue but never invents a
+ *    balance, so those two roles differ by that single capability;
  *  - COMPLIANCE may investigate (start a review, flag) but may never approve,
  *    reject or credit;
  *  - SUPPORT may read the queues so it can answer members, nothing more;
@@ -75,7 +78,6 @@ export const ADMIN_ROLE_PERMISSIONS: Record<AdminRole, readonly AdminPermission[
     "reviewDeposit",
     "reviewWithdrawal",
     "manageFinance",
-    "creditBalance",
     "readFraud",
     "readTrading",
     "manageTrading",

@@ -122,7 +122,7 @@ export async function creditBalanceByAdmin(input: AdminCreditInput): Promise<Adm
         actor.status !== "ACTIVE" ||
         !canAdmin(actor.adminRole as AdminRole | null, "creditBalance")
       ) {
-        throw new AdminCreditError("FORBIDDEN", "Peran FINANCE atau SUPER_ADMIN aktif diperlukan.", 403);
+        throw new AdminCreditError("FORBIDDEN", "Peran SUPER_ADMIN aktif diperlukan.", 403);
       }
 
       const target = await tx.user.findUnique({

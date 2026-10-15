@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   if (!assertSameOrigin(request)) return jsonError("CROSS_ORIGIN", "Permintaan lintas situs ditolak.", 403);
 
   const actor = await requireAdminPermission("creditBalance");
-  if (!actor) return jsonError("FORBIDDEN", "Akses FINANCE atau SUPER_ADMIN diperlukan.", 403);
+  if (!actor) return jsonError("FORBIDDEN", "Akses SUPER_ADMIN diperlukan.", 403);
 
   pruneRateLimitBuckets();
   const limit = rateLimit(`admin-credits:${actor.id}`, 30, 60_000);

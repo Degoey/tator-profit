@@ -422,7 +422,7 @@ export default async function AdminPage() {
         <CardHeader>
           <CardTitle>Kredit saldo administrator</CardTitle>
           <CardDescription>
-            Kredit saldo yang eksplisit dan tercatat. Hanya SUPER_ADMIN dan FINANCE yang dapat memberi
+            Kredit saldo yang eksplisit dan tercatat. Hanya SUPER_ADMIN yang dapat memberi
             kredit; setiap kredit menulis entri ledger ADMIN_CREDIT, jejak audit, dan notifikasi dalam
             satu transaksi database. Nomor referensi berfungsi sebagai kunci idempotensi sehingga
             kredit tidak pernah berulang.

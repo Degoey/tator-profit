@@ -373,8 +373,7 @@ export function AdminCreditForm({
         </form>
       ) : (
         <Alert variant="warning" title="Tidak berwenang">
-          Peran Anda tidak boleh mengubah saldo. Kredit saldo hanya dapat dilakukan oleh SUPER_ADMIN
-          atau FINANCE.
+          Peran Anda tidak boleh mengubah saldo. Kredit saldo hanya dapat dilakukan oleh SUPER_ADMIN.
         </Alert>
       )}
 

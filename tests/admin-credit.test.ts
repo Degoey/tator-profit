@@ -87,7 +87,7 @@ after(async () => {
 
 test("kredit admin menulis ledger ADMIN_CREDIT, audit, notifikasi, dan saldo tersedia", async () => {
   const member = await createUser("credit_target");
-  const admin = await createUser("credit_finance", { role: "ADMIN", adminRole: "FINANCE" });
+  const admin = await createUser("credit_super", { role: "ADMIN", adminRole: "SUPER_ADMIN" });
   const reference = `TEST-${stamp}-A`;
 
   const result = await creditBalanceByAdmin(creditInput(member.id, admin.id, "100.00", reference));
@@ -157,7 +157,7 @@ test("referensi yang sama bersifat idempoten dan tidak mengkredit dua kali", asy
 test("referensi yang sama dengan akun atau jumlah berbeda ditolak", async () => {
   const member = await createUser("credit_conflict");
   const other = await createUser("credit_conflict_other");
-  const admin = await createUser("credit_finance_conflict", { role: "ADMIN", adminRole: "FINANCE" });
+  const admin = await createUser("credit_super_conflict", { role: "ADMIN", adminRole: "SUPER_ADMIN" });
   const reference = `TEST-${stamp}-C`;
 
   await creditBalanceByAdmin(creditInput(member.id, admin.id, "100.00", reference));
@@ -183,6 +183,9 @@ test("referensi yang sama dengan akun atau jumlah berbeda ditolak", async () => 
 test("peran tanpa kemampuan kredit ditolak di sisi server", async () => {
   const member = await createUser("credit_denied_target");
   const cases: { adminRole: AdminRole | null; label: string }[] = [
+    // Admin keuangan sama dengan admin super kecuali satu hal: ia tidak boleh
+    // menambah USDT. Jadi FINANCE harus ditolak di sini.
+    { adminRole: "FINANCE", label: "finance" },
     { adminRole: "SUPPORT", label: "support" },
     { adminRole: "COMPLIANCE", label: "compliance" },
     { adminRole: "VIEWER", label: "viewer" },
@@ -218,7 +221,7 @@ test("peran tanpa kemampuan kredit ditolak di sisi server", async () => {
 });
 
 test("akun non-aktif dan akun bersaldo bukan USDT tidak dapat dikredit", async () => {
-  const admin = await createUser("credit_finance_guard", { role: "ADMIN", adminRole: "FINANCE" });
+  const admin = await createUser("credit_super_guard", { role: "ADMIN", adminRole: "SUPER_ADMIN" });
 
   const suspended = await createUser("credit_suspended", { status: "SUSPENDED" });
   await assert.rejects(
@@ -247,7 +250,7 @@ test("akun non-aktif dan akun bersaldo bukan USDT tidak dapat dikredit", async (
 
 test("jumlah tidak valid ditolak sebelum menyentuh ledger", async () => {
   const member = await createUser("credit_amount_guard");
-  const admin = await createUser("credit_finance_amount", { role: "ADMIN", adminRole: "FINANCE" });
+  const admin = await createUser("credit_super_amount", { role: "ADMIN", adminRole: "SUPER_ADMIN" });
 
   for (const [index, amount] of ["0.00", "-10.00", "10.001"].entries()) {
     await assert.rejects(
@@ -263,7 +266,7 @@ test("jumlah tidak valid ditolak sebelum menyentuh ledger", async () => {
 
 test("koreksi memakai entri penyesuaian baru dan ledger tetap tidak dapat diubah", async () => {
   const member = await createUser("credit_correction");
-  const admin = await createUser("credit_finance_correction", { role: "ADMIN", adminRole: "FINANCE" });
+  const admin = await createUser("credit_super_correction", { role: "ADMIN", adminRole: "SUPER_ADMIN" });
 
   const credit = await creditBalanceByAdmin(creditInput(member.id, admin.id, "100.00", `TEST-${stamp}-G`));
 

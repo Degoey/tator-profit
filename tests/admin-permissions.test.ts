@@ -60,10 +60,24 @@ describe("matriks izin admin eksplisit", () => {
     }
   });
 
-  it("hanya SUPER_ADMIN dan FINANCE yang boleh memberi kredit saldo", () => {
+  it("hanya SUPER_ADMIN yang boleh memberi kredit saldo (menambah USDT)", () => {
     const allowed = ALL_ROLES.filter((role) => canAdmin(role, "creditBalance"));
 
-    assert.deepEqual([...allowed].sort(), ["FINANCE", "SUPER_ADMIN"]);
+    assert.deepEqual([...allowed], ["SUPER_ADMIN"]);
+  });
+
+  it("menyamakan FINANCE dengan SUPER_ADMIN kecuali kredit saldo dan pengelolaan peran", () => {
+    // Aturan pemilik platform: admin keuangan sama dengan admin super, bedanya
+    // hanya menambah USDT. Dua pengecualian lain sengaja dipertahankan:
+    // `manageUsers` karena kemampuan itu dapat menaikkan peran sendiri menjadi
+    // SUPER_ADMIN (jalan memutar ke kredit saldo yang justru ingin ditutup), dan
+    // `reviewFraud` karena memutuskan kasus anti-fraud adalah ranah kepatuhan —
+    // FINANCE tetap boleh membacanya.
+    const superAdmin = [...adminPermissionsOf("SUPER_ADMIN")].sort();
+    const finance = [...adminPermissionsOf("FINANCE")].sort();
+    const onlySuperAdmin = superAdmin.filter((permission) => !finance.includes(permission));
+
+    assert.deepEqual(onlySuperAdmin, ["creditBalance", "manageUsers", "reviewFraud"]);
   });
 
   it("membatasi jejak audit pada SUPER_ADMIN, FINANCE, dan COMPLIANCE", () => {

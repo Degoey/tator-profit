@@ -23,7 +23,7 @@ export interface AdministratorRow {
 const ROLE_OPTIONS: { value: string; label: string }[] = [
   { value: "", label: "Tanpa peran (hanya baca antrean)" },
   { value: "SUPER_ADMIN", label: "Super Admin — seluruh izin" },
-  { value: "FINANCE", label: "Keuangan — setoran, penarikan, kredit" },
+  { value: "FINANCE", label: "Keuangan — setoran, penarikan, komisi" },
   { value: "COMPLIANCE", label: "Kepatuhan — tinjau & tandai setoran" },
   { value: "SUPPORT", label: "Dukungan — hanya baca" },
   { value: "VIEWER", label: "Pengamat — hanya baca" },

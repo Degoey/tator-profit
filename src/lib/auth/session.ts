@@ -63,7 +63,7 @@ export interface ActiveSession {
   userId: string;
   expiresAt: Date;
   /**
-   * Waktu sesi ini terakhir lolos verifikasi kode 2FA pemilik (step-up).
+   * Waktu sesi ini terakhir lolos verifikasi passkey pemilik (step-up).
    * `null` berarti belum pernah; hanya Konsol Pemilik yang membacanya.
    */
   totpVerifiedAt: Date | null;
@@ -131,16 +131,16 @@ export async function revokeUserSessions(userId: string): Promise<number> {
 }
 
 /**
- * Menandai sesi ini lolos verifikasi kode 2FA pemilik (step-up).
- * Hanya dipanggil oleh `owner-2fa-service` setelah kode diverifikasi.
+ * Menandai sesi ini lolos verifikasi passkey pemilik (step-up).
+ * Hanya dipanggil oleh `owner-passkey-service` setelah tanda tangan diverifikasi.
  */
 export async function markSessionOwnerVerified(sessionId: string, at: Date = new Date()): Promise<void> {
   await prisma.session.update({ where: { id: sessionId }, data: { totpVerifiedAt: at } });
 }
 
 /**
- * Mencabut status verifikasi 2FA dari seluruh sesi satu pengguna — dipakai saat
- * 2FA dimatikan/didaftarkan ulang supaya sesi lama tidak tetap "terverifikasi".
+ * Mencabut status verifikasi passkey dari seluruh sesi satu pengguna — dipakai saat
+ * passkey terakhir dihapus supaya sesi lama tidak tetap "terverifikasi".
  */
 export async function clearUserSessionVerifications(userId: string): Promise<number> {
   const result = await prisma.session.updateMany({

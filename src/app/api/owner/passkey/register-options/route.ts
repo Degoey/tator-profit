@@ -3,17 +3,18 @@ import { requireOwnerApi } from "@/lib/auth/owner-guard";
 import { ownerApiError, ownerRateLimit } from "@/lib/owner/api-errors";
 import { assertSameOrigin } from "@/lib/request-origin";
 import { getRequestMeta } from "@/lib/security";
-import { beginOwnerTotpEnrollment } from "@/lib/services/owner-2fa-service";
+import { beginPasskeyRegistration } from "@/lib/services/owner-passkey-service";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Langkah 1 pendaftaran 2FA pemilik: membuat rahasia TOTP baru.
+ * Langkah 1 pendaftaran passkey: membuat opsi pendaftaran WebAuthn
+ * (`PublicKeyCredentialCreationOptions`) dan menyimpan tantangannya di server.
  *
- * Rahasia dikembalikan **satu kali** untuk dipindai/diketik ke aplikasi
- * autentikator; di database hanya tersimpan versi terenkripsinya. 2FA belum
- * aktif sampai langkah 2 (`/api/owner/2fa/activate`) mengonfirmasi satu kode sah.
+ * Peramban meneruskan opsi ini ke `navigator.credentials.create()`; langkah 2
+ * (`/api/owner/passkey/register-verify`) memverifikasi balasan yang ditandatangani.
+ * Tidak ada rahasia yang dibagikan ke klien — hanya tantangan acak sekali pakai.
  */
 export async function POST(request: Request) {
   if (!assertSameOrigin(request)) {
@@ -22,15 +23,15 @@ export async function POST(request: Request) {
 
   try {
     const actor = await requireOwnerApi({ allowEnrollment: true });
-    const limited = ownerRateLimit("2fa-setup", actor.id, 10, 60_000);
+    const limited = ownerRateLimit("passkey-register-options", actor.id, 20, 60_000);
     if (limited) return limited;
 
-    const result = await beginOwnerTotpEnrollment({
+    const options = await beginPasskeyRegistration({
       userId: actor.id,
       meta: await getRequestMeta(),
     });
-    return jsonSuccess(result);
+    return jsonSuccess(options);
   } catch (error) {
-    return ownerApiError(error, "Pendaftaran 2FA tidak dapat dimulai saat ini.");
+    return ownerApiError(error, "Pendaftaran sidik jari tidak dapat dimulai saat ini.");
   }
 }

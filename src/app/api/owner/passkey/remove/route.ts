@@ -1,19 +1,21 @@
 import { jsonError, jsonSuccess } from "@/lib/api";
 import { requireOwnerApi } from "@/lib/auth/owner-guard";
 import { ownerApiError, ownerRateLimit } from "@/lib/owner/api-errors";
-import { ownerTotpCodeSchema } from "@/lib/owner/validation";
+import { ownerPasskeyRemoveSchema } from "@/lib/owner/validation";
 import { MAX_JSON_BYTES, ProofError, readBoundedJsonBody } from "@/lib/payment-proof";
 import { assertSameOrigin } from "@/lib/request-origin";
 import { getRequestMeta } from "@/lib/security";
-import { regenerateOwnerRecoveryCodes } from "@/lib/services/owner-2fa-service";
+import { removeOwnerPasskey } from "@/lib/services/owner-passkey-service";
 import { flattenZodError } from "@/lib/validation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 /**
- * Membuat ulang kode pemulihan. Kode lama langsung tidak berlaku (hash-nya
- * ditimpa), dan kode baru hanya muncul pada jawaban ini.
+ * Menghapus satu kredensial passkey. Hanya dari sesi yang sudah diverifikasi
+ * (passkey aktif dan sesi ini masih segar). Bila kredensial terakhir dihapus,
+ * seluruh sesi pemilik kehilangan status verifikasi dan konsol kembali meminta
+ * pendaftaran — jadi menghapus sidik jari tidak mewariskan akses ke sesi lama.
  */
 export async function POST(request: Request) {
   if (!assertSameOrigin(request)) {
@@ -22,7 +24,7 @@ export async function POST(request: Request) {
 
   try {
     const actor = await requireOwnerApi();
-    const limited = ownerRateLimit("2fa-recovery", actor.id, 5, 60_000);
+    const limited = ownerRateLimit("passkey-remove", actor.id, 10, 60_000);
     if (limited) return limited;
 
     let body: unknown;
@@ -33,24 +35,23 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const parsed = ownerTotpCodeSchema.safeParse(body);
+    const parsed = ownerPasskeyRemoveSchema.safeParse(body);
     if (!parsed.success) {
       return jsonError(
         "VALIDATION_ERROR",
-        "Periksa kembali kode yang dimasukkan.",
+        "Permintaan penghapusan sidik jari tidak dapat dibaca.",
         422,
         flattenZodError(parsed.error),
       );
     }
 
-    const result = await regenerateOwnerRecoveryCodes({
+    const result = await removeOwnerPasskey({
       userId: actor.id,
-      code: parsed.data.code,
-      recoveryCode: parsed.data.recoveryCode,
+      credentialId: parsed.data.credentialId,
       meta: await getRequestMeta(),
     });
     return jsonSuccess(result);
   } catch (error) {
-    return ownerApiError(error, "Kode pemulihan tidak dapat dibuat ulang saat ini.");
+    return ownerApiError(error, "Sidik jari tidak dapat dihapus saat ini.");
   }
 }

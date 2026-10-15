@@ -1,11 +1,9 @@
 import process from "node:process";
 
-import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import {
   APP_DATABASE_URL_ENV,
-  TEST_DATABASE_URL_ENV,
   describeDatabaseTarget,
   loadDatabaseEnvFile,
   resolveTestDatabaseUrl,
@@ -15,15 +13,22 @@ import {
  * Verifikasi Konsol Pemilik terhadap aplikasi yang benar-benar berjalan.
  *
  * Skrip ini **tidak** menyentuh database aplikasi: ia menyiapkan akun uji di
- * database uji (`TEST_DATABASE_URL`), lalu menguji alur lengkap lewat HTTP —
- * masuk, pendaftaran 2FA, penolakan sebelum verifikasi, anti replay kode,
- * pembukaan seluruh halaman konsol, kredit saldo (termasuk idempotensi), dan
- * penolakan bagi akun yang bukan pemilik.
+ * database uji (`TEST_DATABASE_URL`), lalu menguji alur lewat HTTP — masuk,
+ * penolakan sebelum sidik jari terdaftar, opsi pendaftaran WebAuthn, penolakan
+ * sebelum verifikasi sesi, pembukaan seluruh halaman konsol, kredit saldo (termasuk
+ * idempotensi), dan penolakan bagi akun yang bukan pemilik.
+ *
+ * **Batas yang tidak dapat diuji lewat HTTP.** 2FA TOTP sudah diganti passkey
+ * WebAuthn. Upacara pendaftaran dan verifikasi passkey harus ditandatangani perangkat
+ * pemilik — kunci privat tidak pernah meninggalkan peramban — sehingga tidak ada cara
+ * menjalankannya dari skrip HTTP biasa. Bagian itu WAJIB diuji manual di peramban
+ * (lihat blok "SIMULASI" di bawah); skrip ini hanya menyiapkan keadaan
+ * pasca-verifikasi supaya penjaga server dan rute uang tetap dapat diperiksa.
  *
  * Pemakaian:
  *   1. `npm run db:test:setup`
  *   2. jalankan aplikasi pada database uji, mis.
- *      `PORT=3210 DATABASE_URL="$TEST_DATABASE_URL" OWNER_EMAIL=... OWNER_2FA_KEY=... npm run dev`
+ *      `PORT=3210 DATABASE_URL="$TEST_DATABASE_URL" OWNER_EMAIL=... npm run dev`
  *   3. `OWNER_EMAIL=... npm run verify:owner -- --base-url http://127.0.0.1:3210`
  */
 
@@ -46,6 +51,10 @@ function argValue(flag: string): string | null {
   const index = process.argv.indexOf(flag);
   if (index === -1) return null;
   return process.argv[index + 1] ?? null;
+}
+
+function isRedirect(status: number): boolean {
+  return status === 302 || status === 303 || status === 307 || status === 308;
 }
 
 interface HttpResult {
@@ -152,7 +161,6 @@ async function main(): Promise<void> {
 
   process.env.DATABASE_URL = testUrl;
   const { prisma } = await import("../src/lib/prisma");
-  const { totpCode } = await import("../src/lib/owner/totp");
 
   const passwordHash = {
     owner: await bcrypt.hash(OWNER_PASSWORD, 12),
@@ -168,10 +176,6 @@ async function main(): Promise<void> {
       adminRole: "SUPER_ADMIN",
       status: "ACTIVE",
       passwordHash: passwordHash.owner,
-      ownerTotpSecret: null,
-      ownerTotpEnabledAt: null,
-      ownerTotpRecoveryCodes: Prisma.DbNull,
-      ownerTotpLastStep: null,
     },
     create: {
       name: "Pemilik Uji",
@@ -185,6 +189,10 @@ async function main(): Promise<void> {
       emailVerifiedAt: new Date(),
     },
   });
+
+  /** Mulai dari keadaan "belum ada sidik jari" supaya jalur pendaftaran teruji. */
+  await prisma.ownerPasskey.deleteMany({ where: { userId: owner.id } });
+  await prisma.user.update({ where: { id: owner.id }, data: { ownerPasskeyChallenge: null } });
 
   const otherAdmin = await prisma.user.upsert({
     where: { username: "admin-uji-lain" },
@@ -243,74 +251,125 @@ async function main(): Promise<void> {
 
   const beforeEnrollment = await session.get("/owner");
   check(
-    "halaman /owner belum dapat dibuka sebelum 2FA aktif",
-    beforeEnrollment.status === 307 || beforeEnrollment.status === 302,
+    "halaman /owner belum dapat dibuka sebelum sidik jari terdaftar",
+    isRedirect(beforeEnrollment.status),
     `HTTP ${beforeEnrollment.status} → ${beforeEnrollment.location ?? "-"}`,
   );
 
-  const setup = await session.post("/api/owner/2fa/setup");
-  const setupData = payload<{ secret: string; otpauthUri: string }>(setup);
+  const securityWhileUnenrolled = await session.get("/owner/keamanan");
   check(
-    "pendaftaran 2FA mengembalikan rahasia dan URI otpauth",
-    setup.status === 200 && !!setupData?.secret && setupData.otpauthUri.startsWith("otpauth://totp/"),
-    `HTTP ${setup.status}`,
+    "halaman keamanan tetap terbuka untuk mendaftarkan sidik jari",
+    securityWhileUnenrolled.status === 200,
+    `HTTP ${securityWhileUnenrolled.status}`,
   );
 
-  const secret = setupData?.secret ?? "";
-  const step = Math.floor(Date.now() / 1000 / 30);
-
-  const activateWrong = await session.post("/api/owner/2fa/activate", { code: "000000" });
+  const setup = await session.post("/api/owner/passkey/register-options");
+  const setupData = payload<{
+    challenge: string;
+    rp: { id: string; name: string };
+    user: { id: string; name: string };
+  }>(setup);
   check(
-    "aktivasi dengan kode salah ditolak",
-    activateWrong.status >= 400,
-    `HTTP ${activateWrong.status} ${errorCode(activateWrong)}`,
+    "opsi pendaftaran passkey berisi tantangan dan RP ID",
+    setup.status === 200 &&
+      typeof setupData?.challenge === "string" &&
+      setupData.challenge.length > 0 &&
+      !!setupData?.rp?.id,
+    `HTTP ${setup.status} · rp.id=${setupData?.rp?.id ?? "-"}`,
   );
 
-  const activate = await session.post("/api/owner/2fa/activate", { code: totpCode(secret, step) });
-  const activateData = payload<{ recoveryCodes: string[] }>(activate);
+  const authWithoutCredential = await session.post("/api/owner/passkey/authenticate-options");
   check(
-    "aktivasi dengan kode sah berhasil dan membagikan 10 kode pemulihan",
-    activate.status === 200 && (activateData?.recoveryCodes.length ?? 0) === 10,
-    `HTTP ${activate.status} · ${activateData?.recoveryCodes.length ?? 0} kode`,
+    "verifikasi ditolak selama belum ada kredensial terdaftar",
+    authWithoutCredential.status === 409 &&
+      errorCode(authWithoutCredential) === "OWNER_PASSKEY_NOT_ENROLLED",
+    `HTTP ${authWithoutCredential.status} ${errorCode(authWithoutCredential)}`,
   );
 
-  const storedSecret = await prisma.user.findUnique({
-    where: { id: owner.id },
-    select: { ownerTotpSecret: true, ownerTotpEnabledAt: true, ownerTotpRecoveryCodes: true },
+  /**
+   * SIMULASI — menggantikan upacara WebAuthn yang sesungguhnya.
+   *
+   * `register-verify` dan `authenticate-verify` hanya sah bila ditandatangani
+   * perangkat pemilik, sehingga tidak dapat dijalankan dari skrip HTTP biasa: tidak
+   * ada kunci privat di sini, dan server memang menolak balasan yang tidak dapat
+   * diverifikasi. Jadi, untuk menguji penjaga server dan rute uang di bawah, keadaan
+   * "sudah ada kredensial + sesi ini sudah diverifikasi" disiapkan langsung di
+   * database uji.
+   *
+   * Upacara passkey yang sesungguhnya WAJIB diuji manual di peramban:
+   *   1. buka /owner/keamanan, tekan "Daftarkan sidik jari", sentuh sensor;
+   *   2. /owner harus mengalihkan ke /owner/masuk, lalu "Verifikasi dengan sidik jari"
+   *      harus membuka /owner;
+   *   3. hapus kredensial terakhir di /owner/keamanan dan pastikan konsol kembali
+   *      meminta pendaftaran.
+   */
+  console.log("\n== Simulasi keadaan pasca-verifikasi (upacara passkey diuji manual) ==");
+  const fixtureCredentialId = `e2e-owner-passkey-${owner.id}`;
+  await prisma.ownerPasskey.upsert({
+    where: { credentialId: fixtureCredentialId },
+    update: { userId: owner.id },
+    create: {
+      userId: owner.id,
+      credentialId: fixtureCredentialId,
+      publicKey: Buffer.from([1, 2, 3, 4]),
+      counter: 0n,
+      deviceType: "singleDevice",
+      backedUp: false,
+      transports: ["internal"],
+      friendlyName: "Perangkat uji",
+    },
   });
   check(
-    "rahasia TOTP tersimpan terenkripsi, bukan sebagai teks biasa",
-    !!storedSecret?.ownerTotpSecret &&
-      storedSecret.ownerTotpSecret.startsWith("v1.") &&
-      !storedSecret.ownerTotpSecret.includes(secret),
-    storedSecret?.ownerTotpSecret?.slice(0, 12) ?? "(kosong)",
-  );
-  check(
-    "kode pemulihan hanya tersimpan sebagai hash",
-    Array.isArray(storedSecret?.ownerTotpRecoveryCodes) &&
-      (storedSecret?.ownerTotpRecoveryCodes as string[]).every((item) => !item.includes("-")),
-    `${(storedSecret?.ownerTotpRecoveryCodes as string[] | undefined)?.length ?? 0} hash`,
+    "kredensial uji tersimpan (meniru hasil pendaftaran passkey)",
+    (await prisma.ownerPasskey.count({ where: { userId: owner.id } })) === 1,
+    fixtureCredentialId,
   );
 
-  const afterEnrollment = await session.get("/owner");
+  const beforeStepUp = await session.get("/owner");
   check(
-    "halaman /owner masih menuntut verifikasi sesi (step-up)",
-    afterEnrollment.status === 307 || afterEnrollment.status === 302,
-    `HTTP ${afterEnrollment.status} → ${afterEnrollment.location ?? "-"}`,
+    "sesi yang belum diverifikasi masih dialihkan ke halaman verifikasi",
+    isRedirect(beforeStepUp.status),
+    `HTTP ${beforeStepUp.status} → ${beforeStepUp.location ?? "-"}`,
   );
 
-  const replay = await session.post("/api/owner/2fa/verify", { code: totpCode(secret, step) });
+  const blockedBeforeStepUp = await session.post("/api/owner/credits", {
+    userId: member.id,
+    amount: "1000",
+    reason: "Uji konsol pemilik",
+    reference,
+  });
   check(
-    "kode yang sudah dipakai ditolak (anti replay)",
-    replay.status >= 400,
-    `HTTP ${replay.status} ${errorCode(replay)}`,
+    "rute uang menolak sesi yang belum lolos verifikasi sidik jari",
+    blockedBeforeStepUp.status === 401 && errorCode(blockedBeforeStepUp) === "OWNER_PASSKEY_REQUIRED",
+    `HTTP ${blockedBeforeStepUp.status} ${errorCode(blockedBeforeStepUp)}`,
   );
 
-  const verify = await session.post("/api/owner/2fa/verify", { code: totpCode(secret, step + 1) });
-  check("verifikasi 2FA untuk sesi ini berhasil", verify.status === 200, `HTTP ${verify.status} ${errorCode(verify)}`);
+  const ownerSession = await prisma.session.findFirst({
+    where: { userId: owner.id, revokedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (!ownerSession) {
+    throw new Error("Sesi pemilik tidak ditemukan; masuk sebagai pemilik harus membuat satu sesi.");
+  }
+  await prisma.session.update({
+    where: { id: ownerSession.id },
+    data: { totpVerifiedAt: new Date() },
+  });
+  check(
+    "sesi uji ditandai sudah diverifikasi (meniru hasil verifikasi passkey)",
+    true,
+    ownerSession.id,
+  );
 
   console.log("\n== Halaman konsol ==");
-  for (const path of ["/owner", "/owner/pengguna", `/owner/pengguna/${member.id}`, "/owner/audit", "/owner/keamanan"]) {
+  for (const path of [
+    "/owner",
+    "/owner/pengguna",
+    `/owner/pengguna/${member.id}`,
+    "/owner/audit",
+    "/owner/keamanan",
+  ]) {
     const page = await session.get(path);
     check(`halaman ${path} terbuka`, page.status === 200, `HTTP ${page.status}`);
   }
@@ -372,6 +431,14 @@ async function main(): Promise<void> {
     auditRows.map((row) => row.action).join(", ") || "(kosong)",
   );
 
+  console.log("\n== Sesi lain ==");
+  const revoke = await session.post("/api/owner/sessions/revoke");
+  check(
+    "pencabutan sesi lain tidak meminta kode tambahan dari sesi terverifikasi",
+    revoke.status === 200,
+    `HTTP ${revoke.status} ${errorCode(revoke)}`,
+  );
+
   console.log("\n== Akun lain ditolak ==");
   const adminSession = new Session(baseUrl);
   const adminLogin = await adminSession.post("/api/auth/login", {
@@ -386,7 +453,7 @@ async function main(): Promise<void> {
     adminOwnerPage.status === 404,
     `HTTP ${adminOwnerPage.status}`,
   );
-  const adminOwnerApi = await adminSession.post("/api/owner/2fa/setup");
+  const adminOwnerApi = await adminSession.post("/api/owner/passkey/register-options");
   check(
     "rute API konsol menolak admin lain",
     adminOwnerApi.status === 403,
@@ -394,11 +461,18 @@ async function main(): Promise<void> {
   );
 
   const memberSession = new Session(baseUrl);
-  await memberSession.post("/api/auth/login", { identifier: member.username, password: MEMBER_PASSWORD });
+  await memberSession.post("/api/auth/login", {
+    identifier: member.username,
+    password: MEMBER_PASSWORD,
+  });
   const memberOwnerPage = await memberSession.get("/owner");
   check("anggota biasa menerima 404", memberOwnerPage.status === 404, `HTTP ${memberOwnerPage.status}`);
 
-  const crossOrigin = await session.post("/api/owner/2fa/setup", undefined, "https://jahat.example.com");
+  const crossOrigin = await session.post(
+    "/api/owner/passkey/register-options",
+    undefined,
+    "https://jahat.example.com",
+  );
   check(
     "permintaan lintas situs ditolak",
     crossOrigin.status === 403 && errorCode(crossOrigin) === "CROSS_ORIGIN",
@@ -409,7 +483,7 @@ async function main(): Promise<void> {
   const guestOwner = await guest.get("/owner");
   check(
     "tamu diarahkan ke halaman masuk",
-    guestOwner.status === 307 || guestOwner.status === 302,
+    isRedirect(guestOwner.status),
     `HTTP ${guestOwner.status} → ${guestOwner.location ?? "-"}`,
   );
 

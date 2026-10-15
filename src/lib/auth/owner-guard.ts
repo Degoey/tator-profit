@@ -20,8 +20,8 @@ import { prisma } from "@/lib/prisma";
  *  2. pengunjung harus sudah masuk (sesi database yang sah);
  *  3. akunnya harus ADMIN **dan** SUPER_ADMIN **dan** surelnya sama dengan
  *     `OWNER_EMAIL` — peran saja tidak cukup, jadi administrator lain menerima 404;
- *  4. 2FA (TOTP) harus sudah didaftarkan;
- *  5. sesi ini harus sudah lolos verifikasi kode 2FA dan belum kedaluwarsa.
+ *  4. passkey (sidik jari) harus sudah didaftarkan;
+ *  5. sesi ini harus sudah lolos verifikasi passkey dan belum kedaluwarsa.
  *
  * Syarat 3 sengaja menghasilkan `notFound()` (404) alih-alih "akses ditolak":
  * administrator lain tidak diberi tahu bahwa permukaan ini ada.
@@ -34,8 +34,9 @@ export interface OwnerActor {
   email: string;
   adminRole: AdminRole | null;
   sessionId: string;
-  totpEnabled: boolean;
-  /** Waktu sesi ini terakhir lolos verifikasi kode 2FA, atau `null`. */
+  /** True bila pemilik sudah mendaftarkan minimal satu passkey. */
+  passkeyEnabled: boolean;
+  /** Waktu sesi ini terakhir lolos verifikasi passkey, atau `null`. */
   stepUpVerifiedAt: Date | null;
 }
 
@@ -59,7 +60,7 @@ export class OwnerAccessError extends Error {
   }
 }
 
-/** Apakah verifikasi 2FA pada sesi ini masih berlaku (bawaan 12 jam). */
+/** Apakah verifikasi passkey pada sesi ini masih berlaku (bawaan 12 jam). */
 export function ownerStepUpIsFresh(
   verifiedAt: Date | null,
   env: OwnerEnv = process.env,
@@ -86,8 +87,7 @@ export async function loadOwnerContext(env: OwnerEnv = process.env): Promise<Own
       role: true,
       adminRole: true,
       status: true,
-      ownerTotpSecret: true,
-      ownerTotpEnabledAt: true,
+      _count: { select: { ownerPasskeys: true } },
     },
   });
 
@@ -100,19 +100,20 @@ export async function loadOwnerContext(env: OwnerEnv = process.env): Promise<Own
     email: user.email,
     adminRole: user.adminRole,
     sessionId: session.id,
-    totpEnabled: Boolean(user.ownerTotpSecret) && Boolean(user.ownerTotpEnabledAt),
+    passkeyEnabled: user._count.ownerPasskeys > 0,
     stepUpVerifiedAt: session.totpVerifiedAt,
   };
 
-  if (!actor.totpEnabled) return { kind: "enrollment", actor };
+  if (!actor.passkeyEnabled) return { kind: "enrollment", actor };
   if (!ownerStepUpIsFresh(actor.stepUpVerifiedAt, env)) return { kind: "step-up", actor };
   return { kind: "ready", actor };
 }
 
 /**
  * Penjaga halaman konsol pemilik. Tamu diarahkan masuk, akun lain menerima 404,
- * pemilik yang belum mendaftarkan 2FA diarahkan ke halaman keamanan, dan pemilik
- * yang sesinya belum diverifikasi diarahkan ke halaman kode 2FA.
+ * pemilik yang belum mendaftarkan passkey diarahkan ke halaman keamanan, dan
+ * pemilik yang sesinya belum diverifikasi diarahkan ke halaman verifikasi sidik
+ * jari.
  */
 export async function requireOwnerPage(returnTo = "/owner"): Promise<OwnerActor> {
   const context = await loadOwnerContext();
@@ -126,21 +127,21 @@ export async function requireOwnerPage(returnTo = "/owner"): Promise<OwnerActor>
 
 export interface RequireOwnerApiOptions {
   /**
-   * Izinkan keadaan "pemilik sudah masuk tetapi 2FA belum didaftarkan".
-   * Hanya dipakai oleh langkah pendaftaran 2FA itu sendiri.
+   * Izinkan keadaan "pemilik sudah masuk tetapi passkey belum didaftarkan".
+   * Hanya dipakai oleh langkah pendaftaran passkey itu sendiri.
    */
   allowEnrollment?: boolean;
   /**
-   * Izinkan keadaan "2FA aktif tetapi sesi ini belum diverifikasi".
-   * Hanya dipakai oleh langkah verifikasi kode.
+   * Izinkan keadaan "passkey aktif tetapi sesi ini belum diverifikasi".
+   * Hanya dipakai oleh langkah verifikasi sidik jari.
    */
   allowStepUp?: boolean;
 }
 
 /**
  * Penjaga untuk rute API konsol pemilik. Setiap rute yang mengubah keadaan
- * (termasuk yang memindahkan uang) memanggil ini lebih dulu, sehingga 2FA tidak
- * dapat dilewati dengan menembak rute API secara langsung.
+ * (termasuk yang memindahkan uang) memanggil ini lebih dulu, sehingga verifikasi
+ * passkey tidak dapat dilewati dengan menembak rute API secara langsung.
  */
 export async function requireOwnerApi(
   options: RequireOwnerApiOptions = {},
@@ -156,15 +157,15 @@ export async function requireOwnerApi(
   }
   if (context.kind === "enrollment" && !options.allowEnrollment) {
     throw new OwnerAccessError(
-      "OWNER_2FA_NOT_ENROLLED",
-      "2FA pemilik belum didaftarkan. Buka Konsol Pemilik → Keamanan untuk mendaftarkannya.",
+      "OWNER_PASSKEY_NOT_ENROLLED",
+      "Passkey pemilik belum didaftarkan. Buka Konsol Pemilik → Keamanan untuk mendaftarkannya.",
       409,
     );
   }
   if (context.kind === "step-up" && !options.allowStepUp) {
     throw new OwnerAccessError(
-      "OWNER_2FA_REQUIRED",
-      "Sesi ini belum diverifikasi dengan kode 2FA.",
+      "OWNER_PASSKEY_REQUIRED",
+      "Sesi ini belum diverifikasi dengan sidik jari.",
       401,
     );
   }

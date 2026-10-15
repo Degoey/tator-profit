@@ -135,7 +135,7 @@ export default async function OwnerDashboardPage() {
             label: "Login gagal 24 jam",
             value: String(overview.counts.failedLogins24h),
             tone: overview.counts.failedLogins24h > 0 ? "gold" : "default",
-            hint: "Termasuk percobaan kode 2FA yang salah",
+            hint: "Termasuk percobaan verifikasi sidik jari yang salah",
           },
           {
             label: "Total pengguna",

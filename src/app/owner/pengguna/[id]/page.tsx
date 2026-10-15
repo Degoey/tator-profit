@@ -288,7 +288,7 @@ export default async function OwnerMemberDetailPage({
                   {session.revokedAt
                     ? `dicabut ${new Date(session.revokedAt).toLocaleString("id-ID")}`
                     : `dibuat ${new Date(session.createdAt).toLocaleString("id-ID")}`}
-                  {session.totpVerifiedAt ? " · 2FA terverifikasi" : ""}
+                  {session.totpVerifiedAt ? " · sidik jari terverifikasi" : ""}
                 </span>
               </li>
             ))}

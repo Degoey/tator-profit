@@ -1,24 +1,25 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 
+import { OwnerPasskeyEnrollment } from "@/components/owner/owner-passkey-enrollment";
 import { OwnerSecurityActions } from "@/components/owner/owner-security-actions";
 import { OwnerShell } from "@/components/owner/owner-shell";
-import { OwnerTotpEnrollment } from "@/components/owner/owner-totp-enrollment";
-import { Alert } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { loadOwnerContext } from "@/lib/auth/owner-guard";
-import { OWNER_2FA_KEY_ENV } from "@/lib/config/owner";
-import { isOwnerSecretBoxConfigured } from "@/lib/owner/secret-box";
-import { listOwnerSessions, ownerTotpStatus } from "@/lib/services/owner-2fa-service";
+import {
+  listOwnerPasskeys,
+  listOwnerSessions,
+  ownerPasskeyStatus,
+} from "@/lib/services/owner-passkey-service";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Keamanan pemilik" };
 
 /**
- * Halaman keamanan pemilik: pendaftaran 2FA, statusnya, kode pemulihan, dan daftar
- * sesi. Halaman ini juga satu-satunya yang boleh dibuka saat 2FA belum aktif —
- * justru di situlah pendaftarannya dilakukan.
+ * Halaman keamanan pemilik: pendaftaran sidik jari (passkey), status kredensial, dan
+ * daftar sesi. Halaman ini juga satu-satunya yang boleh dibuka saat passkey belum
+ * terdaftar — justru di situlah pendaftarannya dilakukan.
  */
 export default async function OwnerSecurityPage() {
   const context = await loadOwnerContext();
@@ -28,28 +29,24 @@ export default async function OwnerSecurityPage() {
   if (context.kind === "step-up") redirect("/owner/masuk");
 
   const owner = context.actor;
-  const status = await ownerTotpStatus(owner.id);
-  const keyConfigured = isOwnerSecretBoxConfigured();
-
+  const status = await ownerPasskeyStatus(owner.id);
+  const credentials = await listOwnerPasskeys(owner.id);
   const sessions = await listOwnerSessions(owner.id);
 
   return (
     <OwnerShell
       active="/owner/keamanan"
       title="Keamanan pemilik"
-      description="Kata sandi saja tidak cukup untuk konsol pemilik: 2FA berbasis waktu (TOTP) wajib aktif, dan setiap verifikasi berlaku terbatas per sesi."
+      description="Kata sandi saja tidak cukup untuk konsol pemilik: sidik jari (passkey WebAuthn) wajib terdaftar, dan setiap verifikasi berlaku terbatas per sesi."
       ownerLabel={`@${owner.username}`}
     >
       <section className="flex flex-wrap items-center gap-2">
         <Badge variant={status.enabled ? "default" : "danger"}>
-          {status.enabled ? "2FA aktif" : status.pendingEnrollment ? "2FA belum dikonfirmasi" : "2FA belum aktif"}
+          {status.enabled ? "Sidik jari aktif" : "Sidik jari belum terdaftar"}
         </Badge>
-        {status.enabledAt ? (
-          <Badge variant="muted">
-            Aktif sejak {new Date(status.enabledAt).toLocaleString("id-ID")}
-          </Badge>
-        ) : null}
-        <Badge variant="muted">{status.remainingRecoveryCodes} kode pemulihan tersisa</Badge>
+        <Badge variant="muted">
+          {status.credentialCount} kredensial terdaftar
+        </Badge>
         {owner.stepUpVerifiedAt ? (
           <Badge variant="muted">
             Sesi ini terverifikasi {new Date(owner.stepUpVerifiedAt).toLocaleString("id-ID")}
@@ -57,27 +54,28 @@ export default async function OwnerSecurityPage() {
         ) : null}
       </section>
 
-      {!keyConfigured ? (
-        <Alert variant="danger" title="Kunci enkripsi 2FA belum diisi">
-          Variabel lingkungan {OWNER_2FA_KEY_ENV} (64 karakter heksadesimal) belum ada, jadi rahasia 2FA
-          tidak dapat disimpan dengan aman. Pendaftaran 2FA akan ditolak sampai kunci itu diisi di
-          server.
-        </Alert>
-      ) : null}
-
       <Card>
         <CardHeader>
-          <CardTitle>{status.enabled ? "2FA sudah aktif" : "Daftarkan aplikasi autentikator"}</CardTitle>
+          <CardTitle>{status.enabled ? "Sidik jari sudah aktif" : "Daftarkan sidik jari"}</CardTitle>
           <CardDescription>
-            Rahasia TOTP disimpan terenkripsi (AES-256-GCM) di database, dan satu kode hanya dapat
-            dipakai sekali.
+            Hanya kunci publik yang disimpan di server; kunci privat tetap di perangkatmu. Verifikasi
+            berikutnya ditandatangani perangkat, jadi salinan database tidak cukup untuk menirunya.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {status.enabled ? (
-            <OwnerSecurityActions remainingRecoveryCodes={status.remainingRecoveryCodes} />
+            <OwnerSecurityActions
+              credentials={credentials.map((credential) => ({
+                credentialId: credential.credentialId,
+                friendlyName: credential.friendlyName,
+                deviceType: credential.deviceType,
+                backedUp: credential.backedUp,
+                createdAt: credential.createdAt.toISOString(),
+                lastUsedAt: credential.lastUsedAt ? credential.lastUsedAt.toISOString() : null,
+              }))}
+            />
           ) : (
-            <OwnerTotpEnrollment account={owner.email} />
+            <OwnerPasskeyEnrollment account={owner.email} />
           )}
         </CardContent>
       </Card>

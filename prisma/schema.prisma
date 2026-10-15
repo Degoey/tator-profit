@@ -567,20 +567,21 @@ model User {
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
 
-  /// Konsol Pemilik (super admin tunggal). Rahasia TOTP tidak pernah disimpan
-  /// sebagai teks biasa: nilainya dienkripsi AES-256-GCM dengan kunci
-  /// `OWNER_2FA_KEY` (lihat `src/lib/owner/secret-box.ts`).
-  ownerTotpSecret           String?
-  /// Terisi hanya setelah pendaftaran 2FA dikonfirmasi dengan satu kode yang sah.
-  ownerTotpEnabledAt        DateTime?
-  /// Kode pemulihan sekali-pakai; hanya hash HMAC-nya yang disimpan.
-  ownerTotpRecoveryCodes    Json?
-  /// Langkah TOTP terakhir yang sudah dipakai, supaya satu kode tidak dapat
-  /// dipakai dua kali (anti replay).
-  ownerTotpLastStep         Int?
+  /// Konsol Pemilik (super admin tunggal). Autentikasi kedua memakai passkey
+  /// WebAuthn (sidik jari / Face ID), bukan rahasia bersama: kunci privat tidak
+  /// pernah meninggalkan perangkat pemilik, jadi salinan database pun tidak cukup
+  /// untuk meniru verifikasinya.
+  ///
+  /// `ownerPasskeyChallenge` menyimpan tantangan (challenge) WebAuthn yang sedang
+  /// berjalan untuk pendaftaran atau verifikasi berikutnya. Nilainya diganti pada
+  /// setiap langkah dan dibersihkan setelah dipakai, sehingga tantangan lama tidak
+  /// dapat dipakai ulang.
+  ownerPasskeyChallenge String?
 
   profile             Profile?
   sessions            Session[]
+  /// Kredensial passkey WebAuthn milik pemilik (bisa lebih dari satu perangkat).
+  ownerPasskeys       OwnerPasskey[]
   passwordResetTokens PasswordResetToken[]
   userPrograms        UserProgram[]
   balance             Balance?
@@ -632,6 +633,40 @@ model User {
   @@index([createdAt])
   @@index([bankAccountNumber])
   @@index([registrationIp, createdAt])
+}
+
+/// Kredensial passkey WebAuthn milik pemilik Konsol Pemilik.
+///
+/// Satu baris = satu kredensial (satu perangkat/authenticator). Kunci privat
+/// tidak pernah sampai ke server: yang disimpan hanya kunci publik, penghitung
+/// tanda tangan (untuk menolak replay), dan metadata perangkat. Karena itu
+/// verifikasi berikutnya harus ditandatangani perangkat yang memegang kunci
+/// privat, dan salinan database tidak cukup untuk memalsukannya.
+model OwnerPasskey {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  /// ID kredensial dari authenticator, dikodekan base64url. Unik global.
+  credentialId String   @unique
+  /// Kunci publik mentah (COSE) hasil pendaftaran.
+  publicKey    Bytes
+  /// Penghitung tanda tangan terakhir; tanda tangan dengan penghitung lebih
+  /// rendah atau sama ditolak (anti replay).
+  counter      BigInt   @default(0)
+  /// `singleDevice` (terikat perangkat) atau `multiDevice` (tersinkron).
+  deviceType   String
+  /// Apakah kredensial multi-perangkat sudah dicadangkan (mis. iCloud/Google).
+  backedUp     Boolean  @default(false)
+  /// Transport yang didukung authenticator, mis. `internal` atau `hybrid`.
+  transports   String[]
+  /// Nama ramah yang diberikan pemilik, mis. "HP Samsung".
+  friendlyName String?
+  createdAt    DateTime @default(now())
+  /// Kapan kredensial ini terakhir dipakai untuk verifikasi.
+  lastUsedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 /// A manual deposit request: the member reports money that was sent outside the

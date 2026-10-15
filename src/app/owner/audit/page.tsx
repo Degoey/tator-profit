@@ -64,7 +64,7 @@ export default async function OwnerAuditPage({
     <OwnerShell
       active="/owner/audit"
       title="Jejak audit"
-      description="Setiap tindakan administrator, perubahan konfigurasi, keputusan setoran/penarikan, dan peristiwa 2FA pemilik tercatat di sini beserta pelaku, alamat IP, dan waktu."
+      description="Setiap tindakan administrator, perubahan konfigurasi, keputusan setoran/penarikan, dan peristiwa passkey pemilik tercatat di sini beserta pelaku, alamat IP, dan waktu."
       ownerLabel={`@${owner.username}`}
     >
       <Card>

@@ -1,7 +1,6 @@
 import { jsonError, type ApiErrorBody } from "@/lib/api";
 import { OwnerAccessError } from "@/lib/auth/owner-guard";
-import { OwnerSecretError } from "@/lib/owner/secret-box";
-import { OwnerTotpError } from "@/lib/services/owner-2fa-service";
+import { OwnerPasskeyError } from "@/lib/services/owner-passkey-service";
 import { pruneRateLimitBuckets, rateLimit } from "@/lib/rate-limit";
 
 import type { NextResponse } from "next/server";
@@ -9,23 +8,20 @@ import type { NextResponse } from "next/server";
 /**
  * Pemetaan galat bersama untuk seluruh rute Konsol Pemilik.
  *
- * Kesalahan yang memang punya arti bagi pemilik (2FA belum didaftarkan, kode
- * salah, kunci enkripsi belum diisi) dijawab apa adanya; kesalahan lain ditelan
- * menjadi pesan umum supaya detail internal tidak bocor lewat API.
+ * Kesalahan yang memang punya arti bagi pemilik (passkey belum didaftarkan,
+ * verifikasi gagal, kredensial tak dikenal) dijawab apa adanya; kesalahan lain
+ * ditelan menjadi pesan umum supaya detail internal tidak bocor lewat API.
  */
 export function ownerApiError(error: unknown, fallbackMessage: string): NextResponse<ApiErrorBody> {
   if (error instanceof OwnerAccessError) return jsonError(error.code, error.message, error.status);
-  if (error instanceof OwnerTotpError) return jsonError(error.code, error.message, error.status);
-  if (error instanceof OwnerSecretError) {
-    return jsonError(error.code, error.message, error.code === "OWNER_2FA_KEY_MISSING" ? 503 : 409);
-  }
+  if (error instanceof OwnerPasskeyError) return jsonError(error.code, error.message, error.status);
   console.error(fallbackMessage, error);
   return jsonError("INTERNAL_ERROR", fallbackMessage, 500);
 }
 
 /**
  * Pembatas laju per akun pemilik. Dijalankan sebelum pekerjaan apa pun supaya
- * tebakan kode 2FA dan tindakan uang tidak dapat dibanjiri permintaan.
+ * percobaan verifikasi passkey dan tindakan uang tidak dapat dibanjiri permintaan.
  */
 export function ownerRateLimit(
   scope: string,

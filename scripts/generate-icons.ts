@@ -3,8 +3,9 @@
  *
  * Run with: `npm run icons`
  *
- * The artwork is the Tatorprofit mark: a neon rounded square with the dark "T"
- * glyph, kept in sync with the palette in `src/app/globals.css`. Everything is
+ * The artwork is the Tatorprofit mark: a rounded square with the dark "T" glyph,
+ * kept in sync with the palette in `src/app/globals.css` — neon for the member and
+ * admin app, gold for the owner console. Everything is
  * rendered at 4x and box-filtered down, so the edges stay smooth without any
  * image library or binary asset checked into the repository.
  */
@@ -18,11 +19,24 @@ type Rgb = [number, number, number];
 const NEON_LIGHT: Rgb = [0x2b, 0xff, 0x9c];
 const NEON_DARK: Rgb = [0x17, 0xc4, 0x76];
 const INK: Rgb = [0x04, 0x07, 0x0a];
+/** Gold palette for the owner console: the installed owner app must be
+ * distinguishable from the member/admin app on a home screen.
+ */
+const GOLD_LIGHT: Rgb = [0xf6, 0xc4, 0x53];
+const GOLD_DARK: Rgb = [0xc9, 0x9a, 0x2e];
+
+const NEON: Palette = { light: NEON_LIGHT, dark: NEON_DARK };
+const GOLD: Palette = { light: GOLD_LIGHT, dark: GOLD_DARK };
 
 const OUTPUT_DIR = join(process.cwd(), "public", "icons");
 
 /** Supersampling factor: render large, then average each block down. */
 const SUPERSAMPLE = 4;
+
+interface Palette {
+  light: Rgb;
+  dark: Rgb;
+}
 
 interface IconSpec {
   fileName: string;
@@ -33,15 +47,23 @@ interface IconSpec {
   glyphScale: number;
   /** Maskable icons must paint every pixel; rounded corners would be cropped. */
   fullBleed: boolean;
+  /** Brand gradient behind the glyph. */
+  palette: Palette;
 }
 
 const ICONS: IconSpec[] = [
-  { fileName: "favicon-32.png", size: 32, cornerRadius: 0.24, glyphScale: 0.62, fullBleed: false },
-  { fileName: "icon-192.png", size: 192, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false },
-  { fileName: "icon-512.png", size: 512, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false },
+  { fileName: "favicon-32.png", size: 32, cornerRadius: 0.24, glyphScale: 0.62, fullBleed: false, palette: NEON },
+  { fileName: "icon-192.png", size: 192, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: NEON },
+  { fileName: "icon-512.png", size: 512, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: NEON },
   // 42% of the canvas keeps the glyph inside the maskable safe zone.
-  { fileName: "maskable-512.png", size: 512, cornerRadius: 0, glyphScale: 0.42, fullBleed: true },
-  { fileName: "apple-touch-icon.png", size: 180, cornerRadius: 0, glyphScale: 0.54, fullBleed: true },
+  { fileName: "maskable-512.png", size: 512, cornerRadius: 0, glyphScale: 0.42, fullBleed: true, palette: NEON },
+  { fileName: "apple-touch-icon.png", size: 180, cornerRadius: 0, glyphScale: 0.54, fullBleed: true, palette: NEON },
+  // Owner console: same mark, gold, so the installed owner app is told apart
+  // from the member/admin app at a glance on the home screen.
+  { fileName: "owner-192.png", size: 192, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: GOLD },
+  { fileName: "owner-512.png", size: 512, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: GOLD },
+  { fileName: "owner-maskable-512.png", size: 512, cornerRadius: 0, glyphScale: 0.42, fullBleed: true, palette: GOLD },
+  { fileName: "owner-apple-touch-icon.png", size: 180, cornerRadius: 0, glyphScale: 0.54, fullBleed: true, palette: GOLD },
 ];
 
 function mix(from: Rgb, to: Rgb, t: number): Rgb {
@@ -79,7 +101,7 @@ function insideGlyph(u: number, v: number, scale: number): boolean {
 }
 
 function renderIcon(spec: IconSpec): Buffer {
-  const { size, cornerRadius, glyphScale, fullBleed } = spec;
+  const { size, cornerRadius, glyphScale, fullBleed, palette } = spec;
   const hi = size * SUPERSAMPLE;
   const samples = SUPERSAMPLE * SUPERSAMPLE;
   const pixels = new Uint8Array(size * size * 4);
@@ -101,7 +123,7 @@ function renderIcon(spec: IconSpec): Buffer {
           covered += 1;
           const color = insideGlyph(u, v, glyphScale)
             ? INK
-            : mix(NEON_LIGHT, NEON_DARK, (u + v) / 2);
+            : mix(palette.light, palette.dark, (u + v) / 2);
           r += color[0];
           g += color[1];
           b += color[2];

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Crown, LayoutDashboard, ScrollText, ShieldCheck, Users } from "lucide-react";
 
+import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { cn } from "@/lib/utils";
@@ -65,12 +66,19 @@ export function OwnerShell({ active, title, description, ownerLabel, children }:
 
         <main className="min-w-0 space-y-6">
           <header className="rounded-2xl border border-[var(--color-gold)]/25 bg-gradient-to-r from-[var(--color-gold)]/10 via-transparent to-transparent p-6">
-            <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-gold)]">
-              <Crown className="size-3.5" aria-hidden />
-              Konsol Pemilik · {ownerLabel}
-            </p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{title}</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/60">{description}</p>
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--color-gold)]">
+                  <Crown className="size-3.5" aria-hidden />
+                  Konsol Pemilik · {ownerLabel}
+                </p>
+                <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">{title}</h1>
+                <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/60">{description}</p>
+              </div>
+              {/* Tombol pasang aplikasi: browser Chromium memakai prompt asli,
+                  Safari iOS menampilkan langkah "Tambahkan ke Layar Utama". */}
+              <InstallAppButton label="Pasang aplikasi pemilik" />
+            </div>
           </header>
 
           {children}

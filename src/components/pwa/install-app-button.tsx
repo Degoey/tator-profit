@@ -55,7 +55,15 @@ function isIosDevice(): boolean {
  * Nothing here grants access: the installed window still authenticates with the
  * same session cookie and the same server-side permission checks.
  */
-export function InstallAppButton() {
+export interface InstallAppButtonProps {
+  /**
+   * Teks tombol. Konsol pemilik memakai labelnya sendiri ("Pasang aplikasi
+   * pemilik") supaya tidak tertukar dengan aplikasi anggota/admin.
+   */
+  label?: string;
+}
+
+export function InstallAppButton({ label = "Pasang aplikasi admin" }: InstallAppButtonProps) {
   const installed = React.useSyncExternalStore(
     subscribeToInstallState,
     readInstallState,
@@ -106,7 +114,7 @@ export function InstallAppButton() {
     <>
       <Button type="button" variant="outline" size="sm" onClick={install}>
         {promptEvent ? <Download aria-hidden /> : <Smartphone aria-hidden />}
-        Pasang aplikasi admin
+        {label}
       </Button>
 
       {showHint ? (

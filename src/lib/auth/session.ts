@@ -62,6 +62,11 @@ export interface ActiveSession {
   id: string;
   userId: string;
   expiresAt: Date;
+  /**
+   * Waktu sesi ini terakhir lolos verifikasi kode 2FA pemilik (step-up).
+   * `null` berarti belum pernah; hanya Konsol Pemilik yang membacanya.
+   */
+  totpVerifiedAt: Date | null;
 }
 
 /** Resolves the current session from the cookie, or `null` when absent/expired. */
@@ -78,6 +83,7 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
       expiresAt: true,
       revokedAt: true,
       lastUsedAt: true,
+      totpVerifiedAt: true,
       user: { select: { status: true } },
     },
   });
@@ -91,7 +97,12 @@ export async function getActiveSession(): Promise<ActiveSession | null> {
     await prisma.session.update({ where: { id: session.id }, data: { lastUsedAt: new Date() } });
   }
 
-  return { id: session.id, userId: session.userId, expiresAt: session.expiresAt };
+  return {
+    id: session.id,
+    userId: session.userId,
+    expiresAt: session.expiresAt,
+    totpVerifiedAt: session.totpVerifiedAt,
+  };
 }
 
 /** Revokes the current session and clears the cookie. */
@@ -115,6 +126,26 @@ export async function revokeUserSessions(userId: string): Promise<number> {
   const result = await prisma.session.updateMany({
     where: { userId, revokedAt: null },
     data: { revokedAt: new Date() },
+  });
+  return result.count;
+}
+
+/**
+ * Menandai sesi ini lolos verifikasi kode 2FA pemilik (step-up).
+ * Hanya dipanggil oleh `owner-2fa-service` setelah kode diverifikasi.
+ */
+export async function markSessionOwnerVerified(sessionId: string, at: Date = new Date()): Promise<void> {
+  await prisma.session.update({ where: { id: sessionId }, data: { totpVerifiedAt: at } });
+}
+
+/**
+ * Mencabut status verifikasi 2FA dari seluruh sesi satu pengguna — dipakai saat
+ * 2FA dimatikan/didaftarkan ulang supaya sesi lama tidak tetap "terverifikasi".
+ */
+export async function clearUserSessionVerifications(userId: string): Promise<number> {
+  const result = await prisma.session.updateMany({
+    where: { userId, totpVerifiedAt: { not: null } },
+    data: { totpVerifiedAt: null },
   });
   return result.count;
 }

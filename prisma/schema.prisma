@@ -187,6 +187,9 @@ model Session {
   expiresAt  DateTime
   revokedAt  DateTime?
   lastUsedAt DateTime?
+  /// Waktu sesi ini terakhir lolos verifikasi kode 2FA pemilik (step-up).
+  /// `null` untuk sesi biasa dan untuk sesi pemilik yang belum diverifikasi.
+  totpVerifiedAt DateTime?
   createdAt  DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -563,6 +566,18 @@ model User {
   lastLoginAt       DateTime?
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
+
+  /// Konsol Pemilik (super admin tunggal). Rahasia TOTP tidak pernah disimpan
+  /// sebagai teks biasa: nilainya dienkripsi AES-256-GCM dengan kunci
+  /// `OWNER_2FA_KEY` (lihat `src/lib/owner/secret-box.ts`).
+  ownerTotpSecret           String?
+  /// Terisi hanya setelah pendaftaran 2FA dikonfirmasi dengan satu kode yang sah.
+  ownerTotpEnabledAt        DateTime?
+  /// Kode pemulihan sekali-pakai; hanya hash HMAC-nya yang disimpan.
+  ownerTotpRecoveryCodes    Json?
+  /// Langkah TOTP terakhir yang sudah dipakai, supaya satu kode tidak dapat
+  /// dipakai dua kali (anti replay).
+  ownerTotpLastStep         Int?
 
   profile             Profile?
   sessions            Session[]

@@ -1,5 +1,6 @@
 import { Download, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { AdminAuditTrail } from "@/components/payments/admin-audit-trail";
 import { AdminCommissionReview } from "@/components/payments/admin-commission-review";
@@ -20,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { canAdmin, canReviewDepositAction } from "@/lib/auth/admin-permissions";
 import { requireAdminCapability } from "@/lib/auth/current-user";
+import { isOwnerAccount } from "@/lib/config/owner";
 import { formatMoney } from "@/lib/money";
 import { prisma } from "@/lib/prisma";
 import { listCommissionsForAdmin } from "@/lib/services/admin-commission-service";
@@ -307,6 +309,17 @@ export default async function AdminPage() {
         */}
         <InstallAppButton />
       </section>
+
+      {isOwnerAccount(admin) ? (
+        <Alert variant="info" title="Konsol Pemilik tersedia untuk akun ini">
+          Akun ini terdaftar sebagai pemilik platform. Buka{" "}
+          <Link href="/owner" className="text-[var(--color-neon)] underline-offset-4 hover:underline">
+            Konsol Pemilik
+          </Link>{" "}
+          untuk ringkasan seluruh platform, antrean uang, jejak audit lengkap, dan pengaturan 2FA
+          pemilik. Konsol itu mewajibkan kode 2FA pada setiap sesi.
+        </Alert>
+      ) : null}
 
       <PaymentKpis
         label="Indikator administrasi"

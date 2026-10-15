@@ -185,6 +185,18 @@ describe("manifest Panel Admin", () => {
     assert.ok(route.includes("application/manifest+json"));
     assert.ok(layout.includes('manifest: "/admin/manifest.webmanifest"'));
   });
+
+  it("mengarahkan setiap pintasan manifest Konsol Pemilik ke halaman yang ada", () => {
+    const source = readProjectFile("src", "app", "owner", "manifest.webmanifest", "route.ts");
+    const urls = [...source.matchAll(/url: "(\/owner[^"]*)"/g)].map((match) => match[1] ?? "");
+
+    assert.ok(urls.length >= 4, "Konsol Pemilik harus punya pintasan");
+
+    for (const url of urls) {
+      const pageFile = path.join(ROOT, "src", "app", ...url.replace(/^\//, "").split("/"), "page.tsx");
+      assert.ok(existsSync(pageFile), `${url} tidak punya berkas halaman`);
+    }
+  });
 });
 
 describe("service worker: aturan keamanan dana", () => {

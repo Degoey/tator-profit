@@ -37,6 +37,7 @@ const MANIFEST = {
   ],
   shortcuts: [
     { name: "Anggota", short_name: "Anggota", url: "/owner/pengguna" },
+    { name: "Peran admin", short_name: "Peran", url: "/owner/peran" },
     { name: "Jejak audit", short_name: "Audit", url: "/owner/audit" },
     { name: "Keamanan", short_name: "Keamanan", url: "/owner/keamanan" },
   ],

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Crown, LayoutDashboard, ScrollText, ShieldCheck, Users } from "lucide-react";
+import { Crown, LayoutDashboard, ScrollText, ShieldCheck, UserCog, Users } from "lucide-react";
 
 import { InstallAppButton } from "@/components/pwa/install-app-button";
 import { SiteFooter } from "@/components/site-footer";
@@ -14,11 +14,17 @@ import { cn } from "@/lib/utils";
  * dari permukaan anggota dan administrasi umum — dari sini pemilik melihat seluruh
  * platform, bukan hanya satu modul keuangan.
  */
-export type OwnerSection = "/owner" | "/owner/pengguna" | "/owner/audit" | "/owner/keamanan";
+export type OwnerSection =
+  | "/owner"
+  | "/owner/pengguna"
+  | "/owner/peran"
+  | "/owner/audit"
+  | "/owner/keamanan";
 
 const OWNER_LINKS: { href: OwnerSection; label: string; icon: typeof Crown }[] = [
   { href: "/owner", label: "Ringkasan", icon: LayoutDashboard },
   { href: "/owner/pengguna", label: "Anggota", icon: Users },
+  { href: "/owner/peran", label: "Peran admin", icon: UserCog },
   { href: "/owner/audit", label: "Jejak audit", icon: ScrollText },
   { href: "/owner/keamanan", label: "Keamanan", icon: ShieldCheck },
 ];

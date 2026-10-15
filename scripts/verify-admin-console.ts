@@ -380,6 +380,27 @@ async function main(): Promise<void> {
     `HTTP ${crossOrigin.status} ${errorCode(crossOrigin)}`,
   );
 
+  /** Peran admin biasa tidak boleh menyentuh rute pemilik, apa pun isinya. */
+  const ownerRoleAsAdmin = await finance.post("/api/owner/users/role", {
+    userId: "00000000-0000-0000-0000-000000000000",
+    role: "SUPER_ADMIN",
+  });
+  check(
+    "rute peran pemilik menolak administrator biasa",
+    ownerRoleAsAdmin.status === 403,
+    `HTTP ${ownerRoleAsAdmin.status} ${errorCode(ownerRoleAsAdmin)}`,
+  );
+
+  const ownerRoleAsGuest = await guest.post("/api/owner/users/role", {
+    userId: "00000000-0000-0000-0000-000000000000",
+    role: "SUPER_ADMIN",
+  });
+  check(
+    "rute peran pemilik menolak tamu",
+    ownerRoleAsGuest.status === 401 || ownerRoleAsGuest.status === 403,
+    `HTTP ${ownerRoleAsGuest.status} ${errorCode(ownerRoleAsGuest)}`,
+  );
+
   const financeDashboard = await finance.get("/admin");
   check(
     "panel tidak menawarkan kartu kredit saldo milik pemilik",

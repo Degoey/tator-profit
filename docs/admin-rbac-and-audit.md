@@ -137,14 +137,17 @@ dapat dieksekusi sebagai formula oleh aplikasi spreadsheet.
 
 ## 6. Antarmuka peran administrator (Bagian 7/7)
 
-Kemampuan `manageUsers` kini memiliki permukaan di UI: kartu **Peran administrator**
-pada **Konsol Pemilik** (`/owner`). Kartu itu hanya dimuat untuk SUPER_ADMIN — daftar
-administrator tidak pernah dibaca untuk peran lain, jadi tidak ada kebocoran lewat payload
-yang dirender. Sejak Panel Admin peran biasa dibuat (§6e), kartu itu tidak lagi dirender di
-`/admin`: kapabilitas yang hanya dimiliki pemilik sengaja tidak muncul di panel peran biasa.
-Setiap perubahan peran tetap divalidasi ulang di dalam service (`assignAdminRole`),
-sehingga akun FINANCE/SUPPORT/COMPLIANCE/VIEWER tidak dapat memakainya walaupun
-mengirim permintaan langsung ke `/api/admin/users/role`.
+Kemampuan `manageUsers` kini memiliki permukaan di UI: halaman **`/owner/peran`** pada
+**Konsol Pemilik**. Kartu itu hanya dimuat untuk SUPER_ADMIN — daftar administrator tidak
+pernah dibaca untuk peran lain, jadi tidak ada kebocoran lewat payload yang dirender. Sejak
+Panel Admin peran biasa dibuat (§6e), kartu itu tidak lagi dirender di `/admin`: kapabilitas
+yang hanya dimiliki pemilik sengaja tidak muncul di panel peran biasa. Formulir pemilik itu
+mengirim ke `/api/owner/users/role` yang **menuntut sesi pemilik terverifikasi sidik jari**
+(`requireOwnerApi`), jadi faktor kedua tidak dapat dilewati lewat rute admin lama
+(`/api/admin/users/role` masih ada untuk kompatibilitas, tetapi tidak dipakai UI mana pun dan
+tetap menolak siapa pun selain SUPER_ADMIN di dalam service). Setiap perubahan peran tetap
+divalidasi ulang di dalam service (`assignAdminRole`), sehingga akun FINANCE/SUPPORT/
+COMPLIANCE/VIEWER tidak dapat memakainya walaupun mengirim permintaan langsung ke rute.
 
 ## 6b. Persentase Komisi Rabat
 
@@ -228,7 +231,11 @@ permukaan `/admin/**` di aplikasi yang sama, satu halaman per kapabilitas.
 - **Kapabilitas pemilik tidak ikut pindah, secara struktural.** Kredit saldo (`creditBalance`)
   dan pengelola peran (`manageUsers`) tidak dirender di panel ini sama sekali — API-nya sudah
   menolak siapa pun selain SUPER_ADMIN, jadi formulirnya hanya akan jadi tombol yang selalu
-  gagal. Akun pemilik yang membuka panel menerima satu baris penunjuk ke `/owner`.
+  gagal. Akun pemilik yang membuka panel menerima satu baris penunjuk ke `/owner`, dan kedua
+  tindakan itu memang punya rumahnya sendiri di Konsol Pemilik: kredit saldo per anggota di
+  `/owner/pengguna/[id]`, peran administrator di **`/owner/peran`** (rute `/api/owner/users/role`,
+  wajib sesi terverifikasi sidik jari). Dua komponen monolit lama (`admin-credit-form.tsx`,
+  `admin-role-manager.tsx`) dihapus, bukan dibiarkan menganggur.
 - **"Akses terbatas" bukan 404.** Panel peran biasa bukan permukaan rahasia (berbeda dari
   Konsol Pemilik): peran yang tidak memegang `readAudit`/`readFraud` membuka halamannya dan
   menerima kartu "akses terbatas", tetapi **barisnya tidak dimuat di server**

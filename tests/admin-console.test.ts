@@ -111,6 +111,34 @@ describe("Panel Admin: kapabilitas pemilik tidak ikut pindah", () => {
     assert.ok(shell.includes('href="/owner"'), "panel harus menunjuk Konsol Pemilik");
     assert.ok(shell.includes("Menambah saldo USDT dan mengubah peran admin"));
   });
+
+  it("komponen kredit dan pengelola peran lama sudah tidak ada lagi di panel", () => {
+    // Monolit lama menyimpan kedua formulir itu di `src/components/payments/`;
+    // keduanya sudah digantikan Konsol Pemilik, jadi berkasnya tidak boleh kembali.
+    for (const orphan of [
+      ["src", "components", "payments", "admin-credit-form.tsx"],
+      ["src", "components", "payments", "admin-role-manager.tsx"],
+    ]) {
+      assert.equal(existsSync(path.join(ROOT, ...orphan)), false, `${orphan.join("/")} harus dihapus`);
+    }
+  });
+
+  it("pengelola peran administrator tinggal di Konsol Pemilik, lewat rute pemilik", () => {
+    const page = readProjectFile("src", "app", "owner", "peran", "page.tsx");
+    const route = readProjectFile("src", "app", "api", "owner", "users", "role", "route.ts");
+    const shell = readProjectFile("src", "components", "owner", "owner-shell.tsx");
+
+    assert.ok(page.includes("requireOwnerPage"), "halaman peran memakai penjagaan pemilik");
+    assert.ok(page.includes("OwnerRoleManager"));
+    assert.ok(page.includes("listAdministrators"));
+    assert.ok(shell.includes('"/owner/peran"'), "navigasi pemilik harus menautkan halaman peran");
+
+    // Faktor kedua tidak boleh bisa dilewati lewat rute admin lama.
+    assert.ok(route.includes("requireOwnerApi"), "rute peran memakai penjagaan pemilik");
+    assert.ok(route.includes("assignAdminRole"), "aturan peran tetap di satu layanan");
+    assert.ok(route.includes("assertSameOrigin(request)"));
+    assert.equal(route.includes("getAdminActor"), false, "rute pemilik tidak memakai penjagaan admin biasa");
+  });
 });
 
 describe("Panel Admin: penjagaan di server", () => {

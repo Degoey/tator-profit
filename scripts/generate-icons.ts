@@ -24,9 +24,15 @@ const INK: Rgb = [0x04, 0x07, 0x0a];
  */
 const GOLD_LIGHT: Rgb = [0xf6, 0xc4, 0x53];
 const GOLD_DARK: Rgb = [0xc9, 0x9a, 0x2e];
+/** Blue palette for the Panel Admin (regular staff): a third colour, so the
+ * three installable apps are told apart at a glance on a home screen.
+ */
+const ADMIN_LIGHT: Rgb = [0x6e, 0xa8, 0xff];
+const ADMIN_DARK: Rgb = [0x3f, 0x7d, 0xdb];
 
 const NEON: Palette = { light: NEON_LIGHT, dark: NEON_DARK };
 const GOLD: Palette = { light: GOLD_LIGHT, dark: GOLD_DARK };
+const ADMIN: Palette = { light: ADMIN_LIGHT, dark: ADMIN_DARK };
 
 const OUTPUT_DIR = join(process.cwd(), "public", "icons");
 
@@ -64,6 +70,12 @@ const ICONS: IconSpec[] = [
   { fileName: "owner-512.png", size: 512, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: GOLD },
   { fileName: "owner-maskable-512.png", size: 512, cornerRadius: 0, glyphScale: 0.42, fullBleed: true, palette: GOLD },
   { fileName: "owner-apple-touch-icon.png", size: 180, cornerRadius: 0, glyphScale: 0.54, fullBleed: true, palette: GOLD },
+  // Panel admin (peran biasa): mark yang sama, biru, sebagai aplikasi ketiga yang
+  // dipasang berdampingan dengan aplikasi anggota dan Konsol Pemilik.
+  { fileName: "admin-192.png", size: 192, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: ADMIN },
+  { fileName: "admin-512.png", size: 512, cornerRadius: 0.22, glyphScale: 0.54, fullBleed: false, palette: ADMIN },
+  { fileName: "admin-maskable-512.png", size: 512, cornerRadius: 0, glyphScale: 0.42, fullBleed: true, palette: ADMIN },
+  { fileName: "admin-apple-touch-icon.png", size: 180, cornerRadius: 0, glyphScale: 0.54, fullBleed: true, palette: ADMIN },
 ];
 
 function mix(from: Rgb, to: Rgb, t: number): Rgb {

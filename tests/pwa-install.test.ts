@@ -8,7 +8,7 @@
  * queue that had already been reviewed.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
@@ -16,6 +16,7 @@ import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import manifest from "../src/app/manifest";
+import { ADMIN_MANIFEST } from "../src/lib/config/admin-manifest";
 import { InstallAppButton } from "../src/components/pwa/install-app-button";
 import { ServiceWorkerRegistration } from "../src/components/pwa/service-worker-registration";
 
@@ -43,16 +44,23 @@ function readPngSize(publicPath: string): { width: number; height: number } {
 }
 
 const swSource = readProjectFile("public", "sw.js");
-const adminPageSource = readProjectFile("src", "app", "admin", "page.tsx");
+const adminShellSource = readProjectFile("src", "components", "admin", "admin-shell.tsx");
+const ownerManifestRouteSource = readProjectFile(
+  "src",
+  "app",
+  "owner",
+  "manifest.webmanifest",
+  "route.ts",
+);
 
-describe("manifest aplikasi admin", () => {
+describe("manifest aplikasi anggota (akar)", () => {
   const appManifest = manifest();
 
-  it("menjadikan /admin sebagai titik masuk jendela mandiri", () => {
-    assert.equal(appManifest.id, "/admin");
-    assert.equal(appManifest.start_url, "/admin");
-    assert.equal(appManifest.display, "standalone");
+  it("menjadikan /dashboard titik masuk aplikasi anggota", () => {
+    assert.equal(appManifest.id, "/");
+    assert.equal(appManifest.start_url, "/dashboard");
     assert.equal(appManifest.scope, "/");
+    assert.equal(appManifest.display, "standalone");
     assert.equal(appManifest.lang, "id");
     assert.ok(appManifest.name, "name wajib ada");
     assert.ok(appManifest.short_name, "short_name wajib ada");
@@ -99,20 +107,83 @@ describe("manifest aplikasi admin", () => {
 
     assert.equal(plain.equals(maskable), false, "ikon maskable harus punya zona aman");
   });
+});
 
-  it("mengarahkan setiap pintasan ke bagian admin yang benar-benar ada", () => {
-    const shortcuts = appManifest.shortcuts ?? [];
+describe("manifest Panel Admin", () => {
+  it("memakai id dan start_url /admin, terpisah dari aplikasi anggota dan Konsol Pemilik", () => {
+    assert.equal(ADMIN_MANIFEST.id, "/admin");
+    assert.equal(ADMIN_MANIFEST.start_url, "/admin");
+    // Tiga permukaan = tiga aplikasi terpasang; id yang sama membuat yang kedua
+    // menimpa yang pertama di layar utama.
+    assert.notEqual(ADMIN_MANIFEST.id, manifest().id);
+    assert.ok(
+      ownerManifestRouteSource.includes('id: "/owner"'),
+      "Konsol Pemilik harus tetap memakai id /owner",
+    );
+    assert.equal(ADMIN_MANIFEST.display, "standalone");
+    assert.equal(ADMIN_MANIFEST.lang, "id");
+    // Scope tetap "/" supaya pengalihan ke /login tidak membuka tab baru.
+    assert.equal(ADMIN_MANIFEST.scope, "/");
+    assert.ok((ADMIN_MANIFEST.short_name ?? "").length <= 12, "short_name harus ringkas");
+    assert.equal(ADMIN_MANIFEST.theme_color, "#04070a");
+  });
+
+  it("memberi panel ikon birunya sendiri sebagai PNG dengan ukuran yang cocok", () => {
+    const icons = ADMIN_MANIFEST.icons ?? [];
+    const declared = icons.map((icon) => `${icon.sizes}:${icon.purpose ?? "any"}`);
+
+    assert.ok(declared.includes("192x192:any"), "butuh ikon 192 any");
+    assert.ok(declared.includes("512x512:any"), "butuh ikon 512 any");
+    assert.ok(declared.includes("512x512:maskable"), "butuh ikon 512 maskable");
+
+    for (const icon of icons) {
+      const [width, height] = (icon.sizes ?? "").split("x").map(Number);
+      const size = readPngSize(icon.src);
+
+      assert.equal(size.width, width, `lebar ${icon.src}`);
+      assert.equal(size.height, height, `tinggi ${icon.src}`);
+    }
+
+    // Ikon panel harus berbeda dari ikon anggota dan ikon pemilik, bukan sekadar
+    // nama berkas yang berbeda.
+    const adminIcon = readFileSync(path.join(PUBLIC_DIR, "icons", "admin-512.png"));
+    for (const other of ["icon-512.png", "owner-512.png"]) {
+      assert.equal(
+        adminIcon.equals(readFileSync(path.join(PUBLIC_DIR, "icons", other))),
+        false,
+        `admin-512.png tidak boleh sama dengan ${other}`,
+      );
+    }
+  });
+
+  it("mengarahkan setiap pintasan ke halaman panel yang benar-benar ada", () => {
+    const shortcuts = ADMIN_MANIFEST.shortcuts ?? [];
     assert.equal(shortcuts.length, 4, "empat pintasan diharapkan");
 
     for (const shortcut of shortcuts) {
-      assert.ok(shortcut.url.startsWith("/admin#"), `${shortcut.url} harus di dalam /admin`);
-
-      const anchor = shortcut.url.slice(shortcut.url.indexOf("#") + 1);
       assert.ok(
-        adminPageSource.includes(`id="${anchor}"`),
-        `halaman admin tidak memuat anchor ${anchor}`,
+        shortcut.url.startsWith("/admin/"),
+        `${shortcut.url} harus halaman di dalam panel`,
       );
+
+      const pageFile = path.join(
+        ROOT,
+        "src",
+        "app",
+        ...shortcut.url.replace(/^\//, "").split("/"),
+        "page.tsx",
+      );
+      assert.ok(existsSync(pageFile), `${shortcut.url} tidak punya berkas halaman`);
     }
+  });
+
+  it("dilayani oleh route handler dan dipakai layout panel", () => {
+    const route = readProjectFile("src", "app", "admin", "manifest.webmanifest", "route.ts");
+    const layout = readProjectFile("src", "app", "admin", "layout.tsx");
+
+    assert.ok(route.includes("ADMIN_MANIFEST"), "route harus memakai konfigurasi bersama");
+    assert.ok(route.includes("application/manifest+json"));
+    assert.ok(layout.includes('manifest: "/admin/manifest.webmanifest"'));
   });
 });
 
@@ -288,8 +359,11 @@ describe("pemasangan di permukaan admin", () => {
     }
   });
 
-  it("menaruh tombol pasang hanya di halaman admin", () => {
-    assert.ok(adminPageSource.includes("<InstallAppButton />"));
+  it("menaruh tombol pasang di kerangka panel admin, bukan di halaman anggota", () => {
+    assert.ok(
+      adminShellSource.includes('<InstallAppButton label="Pasang aplikasi admin" />'),
+      "kerangka panel admin harus menawarkan pemasangan aplikasinya",
+    );
 
     for (const memberPage of ["page.tsx", "dashboard/page.tsx", "profile/page.tsx"]) {
       const source = readProjectFile("src", "app", ...memberPage.split("/"));

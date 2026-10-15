@@ -8,6 +8,11 @@
   --color-neon-dim: #17c476;
   --color-gold: #f6c453;
   --color-gold-dim: #c99a2e;
+  /* Aksen Panel Admin (peran biasa): biru, supaya aplikasi admin yang dipasang
+     di layar utama tidak tertukar dengan aplikasi anggota (neon) maupun Konsol
+     Pemilik (emas). */
+  --color-admin: #6ea8ff;
+  --color-admin-dim: #3f7ddb;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --radius-2xl: 1rem;

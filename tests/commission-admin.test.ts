@@ -151,7 +151,12 @@ describe("parameter daftar komisi admin", () => {
 describe("batas wewenang permukaan komisi admin", () => {
   const routeSource = readProjectFile("src", "app", "api", "admin", "commissions", "route.ts");
   const serviceSource = readProjectFile("src", "lib", "services", "referral-service.ts");
-  const pageSource = readProjectFile("src", "app", "admin", "page.tsx");
+  /**
+   * Sejak Panel Admin dipecah menjadi satu halaman per kapabilitas, antrean komisi
+   * dirender di `/admin/komisi` dan kuerinya tinggal di modul layanan panel.
+   */
+  const pageSource = readProjectFile("src", "app", "admin", "komisi", "page.tsx");
+  const consoleServiceSource = readProjectFile("src", "lib", "services", "admin-console-service.ts");
 
   it("membaca antrean dengan kemampuan read dan mengubahnya dengan manageFinance", () => {
     assert.ok(routeSource.includes('requireAdminPermission("read")'), "GET memakai kemampuan read");
@@ -173,16 +178,16 @@ describe("batas wewenang permukaan komisi admin", () => {
   });
 
   it("menyematkan antrean komisi ke panel admin untuk peran apa pun", () => {
-    assert.ok(pageSource.includes("<AdminCommissionReview"), "panel komisi dirender di /admin");
+    assert.ok(pageSource.includes("<AdminCommissionReview"), "panel komisi dirender di /admin/komisi");
     assert.ok(
-      pageSource.includes("listCommissionsForAdmin({ take: 100 })"),
+      consoleServiceSource.includes("listCommissionsForAdmin({ take: 100 })"),
       "antrean dimuat server-side, bukan dari klien",
     );
   });
 
   it("memasukkan ReferralCommission ke jejak audit yang dimuat panel", () => {
     assert.ok(
-      pageSource.includes('"ReferralCommission"'),
+      consoleServiceSource.includes('"ReferralCommission"'),
       "riwayat audit setiap baris komisi ikut dimuat",
     );
   });

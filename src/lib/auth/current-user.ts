@@ -113,6 +113,22 @@ export async function requireAdmin(): Promise<CurrentUser> {
 }
 
 /**
+ * Penjagaan dasar Panel Admin (peran biasa).
+ *
+ * Tamu diarahkan masuk lalu kembali ke panel; akun yang bukan admin — atau admin
+ * yang belum diberi peran admin — dialihkan ke dasbor anggota. Panel ini tidak
+ * memakai faktor kedua: permukaannya memang untuk petugas, bukan pemilik, dan
+ * setiap halaman tetap memutuskan kapabilitasnya sendiri di server.
+ */
+export async function requireAdminConsole(returnTo = "/admin"): Promise<CurrentUser> {
+  const user = await requireUser(returnTo);
+  if (user.role !== "ADMIN" || !user.adminRole) {
+    redirect("/dashboard?error=forbidden");
+  }
+  return user;
+}
+
+/**
  * Server-side guard for admin areas that need one specific capability.
  * Administrators without an explicit admin role are denied (fail closed).
  */

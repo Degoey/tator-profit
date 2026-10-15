@@ -24,9 +24,14 @@ export interface AdminDepositRow {
   rejectionReason: string | null;
   reviewNote: string | null;
   flaggedReason: string | null;
-  proofFileName: string;
-  proofMimeType: string;
-  proofSize: number;
+  /**
+   * Bukti pembayaran privat. `null` bagi peran tanpa kapabilitas `readProof`
+   * (VIEWER): halaman tidak mengirim berkas itu sama sekali, sehingga tautan
+   * unduh yang pasti ditolak server tidak pernah dirender.
+   */
+  proofFileName: string | null;
+  proofMimeType: string | null;
+  proofSize: number | null;
   userName: string;
   userUsername: string;
   userEmail: string;
@@ -289,20 +294,29 @@ export function AdminDepositReview({
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">
                 Bukti transfer
               </p>
-              <p className="mt-1 text-sm text-white/75">
-                {detail.proofFileName} · {(detail.proofSize / 1024).toFixed(0)} KB ·{" "}
-                {detail.proofMimeType}
-              </p>
-              <Button asChild variant="outline" size="sm" className="mt-3">
-                <a
-                  href={`/api/deposits/${detail.id}/proof`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  <Eye aria-hidden />
-                  Buka bukti (privat)
-                </a>
-              </Button>
+              {detail.proofFileName ? (
+                <>
+                  <p className="mt-1 text-sm text-white/75">
+                    {detail.proofFileName}
+                    {detail.proofSize ? ` · ${(detail.proofSize / 1024).toFixed(0)} KB` : ""}
+                    {detail.proofMimeType ? ` · ${detail.proofMimeType}` : ""}
+                  </p>
+                  <Button asChild variant="outline" size="sm" className="mt-3">
+                    <a
+                      href={`/api/deposits/${detail.id}/proof`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Eye aria-hidden />
+                      Buka bukti (privat)
+                    </a>
+                  </Button>
+                </>
+              ) : (
+                <p className="mt-1 text-sm text-white/60">
+                  Peran Anda tidak diizinkan membuka berkas bukti pembayaran.
+                </p>
+              )}
             </div>
 
             {detail.rejectionReason ? (

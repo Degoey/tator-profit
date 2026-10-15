@@ -19,7 +19,8 @@
     "demo:reset": "tsx scripts/demo-reset.ts",
     "dev:credit": "tsx scripts/dev-credit-seed.ts",
     "icons": "tsx scripts/generate-icons.ts",
-    "verify:owner": "tsx scripts/verify-owner-console.ts"
+    "verify:owner": "tsx scripts/verify-owner-console.ts",
+    "verify:admin": "tsx scripts/verify-admin-console.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

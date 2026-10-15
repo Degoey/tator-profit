@@ -14,7 +14,7 @@ import { readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, it } from "node:test";
 
-import manifest from "../src/app/manifest";
+import { ADMIN_MANIFEST } from "../src/lib/config/admin-manifest";
 
 /** `npm test` always runs from the repository root. */
 const ROOT = process.cwd();
@@ -264,7 +264,9 @@ describe("kesesuaian brand dengan permukaan web", () => {
   });
 
   it("memberi label peluncur yang sama dengan nama manifest PWA", () => {
-    assert.equal(manifest().name, "Tatorprofit Admin");
+    // Pembungkus Android ini adalah aplikasi **admin**: namanya mengikuti manifest
+    // panel (`/admin/manifest.webmanifest`), bukan manifest anggota di akar.
+    assert.equal(ADMIN_MANIFEST.name, "Tatorprofit Admin");
     assert.match(stringsXml, /<string name="app_name">Tatorprofit Admin<\/string>/);
   });
 
@@ -295,7 +297,7 @@ describe("konfigurasi build wrapper", () => {
     assert.equal(url.protocol, "http:");
     assert.equal(url.hostname, "10.0.2.2", "default hanya untuk emulator");
     assert.equal(url.port, "3000");
-    assert.equal(url.pathname, manifest().start_url);
+    assert.equal(url.pathname, ADMIN_MANIFEST.start_url);
   });
 
   it("menolak rilis tanpa HTTPS dan tanpa kunci sendiri", () => {

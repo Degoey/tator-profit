@@ -20,7 +20,7 @@ export type PaymentSection =
   | "/deposit"
   | "/withdrawal"
   | "/admin"
-  | "/fraud-review"
+  | "/admin/fraud"
   | "/rewards"
   | "/transactions";
 
@@ -60,7 +60,9 @@ export function PaymentShell({
   }
 
   if (showFraudReview) {
-    links.push({ href: "/fraud-review", label: "Tinjauan Anti-Fraud", icon: ShieldAlert });
+    // Antrean anti-fraud adalah halaman kapabilitas di Panel Admin; tidak ada lagi
+    // halaman terpisah di permukaan anggota.
+    links.push({ href: "/admin/fraud", label: "Tinjauan Anti-Fraud", icon: ShieldAlert });
   }
 
   return (

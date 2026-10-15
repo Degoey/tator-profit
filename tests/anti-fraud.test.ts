@@ -647,22 +647,32 @@ describe("alur pendaftaran nyata", () => {
 });
 
 describe("integrasi rute, halaman, dan izin", () => {
-  it("menautkan halaman tinjauan pada kerangka pembayaran dan halaman admin", () => {
+  it("menautkan halaman tinjauan pada kerangka pembayaran dan halaman panel", () => {
     const shell = readProjectFile("src", "components", "payments", "payment-shell.tsx");
     const adminPage = readProjectFile("src", "app", "admin", "page.tsx");
+    const consoleService = readProjectFile("src", "lib", "services", "admin-console-service.ts");
 
-    assert.match(shell, /"\/fraud-review"/);
+    // Kerangka permukaan anggota menautkan antrean ke halaman kapabilitas di panel.
+    assert.match(shell, /"\/admin\/fraud"/);
     assert.match(shell, /showFraudReview/);
-    assert.match(adminPage, /showFraudReview=\{canReadFraud\}/);
-    assert.match(adminPage, /countOpenFraudCases/);
+    // Dasbor panel hanya memuat penghitung kasus untuk peran dengan readFraud.
+    assert.match(adminPage, /canReadFraud/);
+    assert.match(adminPage, /Kasus anti-fraud terbuka/);
+    assert.match(consoleService, /options\.canReadFraud \? await countOpenFraudCases\(\) : 0/);
   });
 
   it("membatasi halaman tinjauan pada izin readFraud dan reviewFraud", () => {
-    const page = readProjectFile("src", "app", "fraud-review", "page.tsx");
+    const page = readProjectFile("src", "app", "admin", "fraud", "page.tsx");
 
-    assert.match(page, /requireAdminCapability\("readFraud"\)/);
+    assert.match(page, /requireAdminConsole/);
+    assert.match(page, /canAdmin\(admin\.adminRole, "readFraud"\)/);
     assert.match(page, /canAdmin\(admin\.adminRole, "reviewFraud"\)/);
     assert.match(page, /listFraudCases\("ALL"\)/);
+    // Alamat lama tetap ada, tetapi hanya sebagai pengalihan ke halaman panel.
+    assert.match(
+      readProjectFile("src", "app", "fraud-review", "page.tsx"),
+      /redirect\("\/admin\/fraud"\)/,
+    );
   });
 
   it("melindungi rute keputusan dengan origin, batas laju, dan pemeriksaan izin", () => {

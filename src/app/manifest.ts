@@ -1,26 +1,26 @@
 import type { MetadataRoute } from "next";
 
 /**
- * Web app manifest, served by Next.js at `/manifest.webmanifest`.
+ * Manifest aplikasi **anggota**, dilayani Next.js di `/manifest.webmanifest`.
  *
- * This is what turns the existing administrator surface into an installable app:
- * an administrator opens `/admin` on Android or iOS, chooses "Install app" (or
- * "Add to Home screen"), and gets a standalone window with its own launcher
- * icon. No backend change is involved: the same session cookie, the same
- * `/api/admin/*` endpoints and the same server-side permission checks are used.
+ * Sejak Panel Admin (`/admin/manifest.webmanifest`) dan Konsol Pemilik
+ * (`/owner/manifest.webmanifest`) punya manifest sendiri, berkas ini kembali ke
+ * pengalaman anggota: `id` dan `start_url` menunjuk `/dashboard`. Sebelumnya
+ * manifest akar menunjuk `/admin`, sehingga anggota yang memasang aplikasi dari
+ * halaman mana pun justru menerima aplikasi admin dan langsung dipantulkan oleh
+ * penjagaan halaman.
  *
- * `start_url` points at the admin queue because this manifest is offered from
- * the admin surface; a member who installs it anyway is redirected to
- * `/dashboard` by the server guard in `src/lib/auth/current-user.ts`.
+ * Tidak ada backend baru di sini: jendela mandiri memakai cookie sesi yang sama
+ * dan pemeriksaan izin yang sama di server.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    id: "/admin",
-    name: "Tatorprofit Admin",
-    short_name: "TP Admin",
+    id: "/",
+    name: "Tatorprofit",
+    short_name: "Tatorprofit",
     description:
-      "Panel administrasi Tatorprofit: tinjau setoran dan penarikan, kredit saldo, dan periksa jejak audit.",
-    start_url: "/admin",
+      "Platform anggota Tatorprofit: program, imbalan, setoran manual, penarikan, dan jaringan rujukan.",
+    start_url: "/dashboard",
     scope: "/",
     display: "standalone",
     orientation: "any",
@@ -35,10 +35,10 @@ export default function manifest(): MetadataRoute.Manifest {
       { src: "/icons/maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
     shortcuts: [
-      { name: "Tinjauan deposit", short_name: "Deposit", url: "/admin#deposit" },
-      { name: "Tinjauan penarikan", short_name: "Penarikan", url: "/admin#penarikan" },
-      { name: "Kredit saldo", short_name: "Kredit", url: "/admin#kredit" },
-      { name: "Jejak audit", short_name: "Audit", url: "/admin#audit" },
+      { name: "Dasbor", short_name: "Dasbor", url: "/dashboard" },
+      { name: "Setor dana", short_name: "Setor", url: "/deposit" },
+      { name: "Penarikan", short_name: "Tarik", url: "/withdrawal" },
+      { name: "Imbalan", short_name: "Imbalan", url: "/rewards" },
     ],
   };
 }

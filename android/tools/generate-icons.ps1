@@ -11,8 +11,16 @@
       mipmap-<density>/ic_launcher_round.png       legacy round icon
       mipmap-<density>/ic_launcher_foreground.png  adaptive icon foreground (API 26+)
 
+    The wrapper is the **admin** surface, so it takes the admin artwork
+    (`admin-512.png`, `admin-maskable-512.png`) — the same files
+    `/admin/manifest.webmanifest` serves, which is what keeps the launcher icon
+    from drifting away from the icon the browser installs.
+
     The adaptive foreground is a transparent canvas with the mark centred at 62%
     of its size, which keeps it inside the 66dp safe zone of the 108dp layer.
+
+    `generate-icons.py` is the Linux/CI twin of this script: same rules, so a
+    build on a server reproduces the same icon set without PowerShell.
 
     Run from the repository root:
         powershell -ExecutionPolicy Bypass -File android/tools/generate-icons.ps1
@@ -121,8 +129,8 @@ function New-AdaptiveForegroundPng {
     }
 }
 
-$squareSource = Join-Path $SourceDirectory 'icon-512.png'
-$maskableSource = Join-Path $SourceDirectory 'maskable-512.png'
+$squareSource = Join-Path $SourceDirectory 'admin-512.png'
+$maskableSource = Join-Path $SourceDirectory 'admin-maskable-512.png'
 
 foreach ($candidate in @($squareSource, $maskableSource)) {
     if (-not (Test-Path -LiteralPath $candidate)) {

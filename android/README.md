@@ -164,10 +164,19 @@ release build **never** falls back to the shared debug key: without
 ## 4. Launcher icons
 
 The icons are generated from the canonical PWA artwork in `public/icons`, so the
-launcher icon and the browser-installed icon cannot drift apart:
+launcher icon and the browser-installed icon cannot drift apart. The wrapper is
+the **admin** surface, so it takes the admin artwork (`admin-512.png`,
+`admin-maskable-512.png`) — the same files `/admin/manifest.webmanifest` serves.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File android/tools/generate-icons.ps1
+```
+
+On a machine without PowerShell (server, CI) run the twin script, which applies
+the same rules:
+
+```bash
+python3 android/tools/generate-icons.py
 ```
 
 It writes, for each density bucket (`mdpi` â€¦ `xxxhdpi`):
@@ -179,8 +188,9 @@ It writes, for each density bucket (`mdpi` â€¦ `xxxhdpi`):
 | `ic_launcher_foreground.png` | adaptive foreground (108dp layer, mark at 62%) |
 
 `res/mipmap-anydpi-v26/ic_launcher.xml` composes the adaptive icon from that
-foreground plus the brand ink background. The script uses `System.Drawing` from
-Windows PowerShell, so no npm package and no native build step is involved.
+foreground plus the brand ink background. The PowerShell script uses
+`System.Drawing`, so it needs no npm package; the Python twin needs Pillow
+(`pip install pillow`) and nothing else.
 
 ---
 

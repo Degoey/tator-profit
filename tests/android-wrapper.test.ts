@@ -59,6 +59,7 @@ const layoutXml = readAndroidFile(...APP_MAIN, "res", "layout", "activity_main.x
 const offlineHtml = readAndroidFile(...APP_MAIN, "assets", "offline.html");
 const adaptiveIconXml = readAndroidFile(...APP_MAIN, "res", "mipmap-anydpi-v26", "ic_launcher.xml");
 const iconScript = readAndroidFile("tools", "generate-icons.ps1");
+const iconScriptPy = readAndroidFile("tools", "generate-icons.py");
 
 const globalsCss = readProjectFile("src", "app", "globals.css");
 const gitignore = readProjectFile(".gitignore");
@@ -367,10 +368,23 @@ describe("ikon peluncur", () => {
     }
   });
 
-  it("menurunkan ikon dari aset PWA yang sama, tanpa mengunduh apa pun", () => {
-    assert.match(iconScript, /icon-512\.png/);
-    assert.match(iconScript, /maskable-512\.png/);
-    assert.equal(/Invoke-WebRequest|npm install/.test(iconScript), false);
+  it("menurunkan ikon dari karya admin PWA yang sama, tanpa mengunduh apa pun", () => {
+    // Pembungkus ini permukaan admin, jadi ikonnya harus ikon /admin (biru) —
+    // berkas yang sama dengan yang dilayani `/admin/manifest.webmanifest`.
+    for (const [nama, script] of [
+      ["generate-icons.ps1", iconScript],
+      ["generate-icons.py", iconScriptPy],
+    ] as const) {
+      assert.match(script, /admin-512\.png/, `${nama} harus memakai admin-512.png`);
+      assert.match(script, /admin-maskable-512\.png/, `${nama} harus memakai admin-maskable-512.png`);
+      assert.equal(/Invoke-WebRequest|npm install/.test(script), false);
+      // Karya anggota di akar (hijau) tidak boleh dipakai aplikasi admin.
+      assert.equal(
+        /(?<!admin-)icon-512\.png/.test(script),
+        false,
+        `${nama} tidak boleh memakai ikon anggota`,
+      );
+    }
   });
 });
 

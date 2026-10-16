@@ -20,7 +20,9 @@
     "dev:credit": "tsx scripts/dev-credit-seed.ts",
     "icons": "tsx scripts/generate-icons.ts",
     "verify:owner": "tsx scripts/verify-owner-console.ts",
-    "verify:admin": "tsx scripts/verify-admin-console.ts"
+    "verify:admin": "tsx scripts/verify-admin-console.ts",
+    "akun:daftar": "tsx scripts/daftar-akun.ts",
+    "petugas:admin": "tsx scripts/petugas-admin.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

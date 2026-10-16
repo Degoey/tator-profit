@@ -23,6 +23,8 @@ export const PAYMENT_STATUS_LABELS: Record<string, StatusMeta> = {
   ACTIVE: { label: "Aktif", variant: "default" },
   CANCELLED: { label: "Dibatalkan", variant: "muted" },
   SUSPENDED: { label: "Ditangguhkan", variant: "danger" },
+  PAID: { label: "Dibayar", variant: "default" },
+  VOID: { label: "Dibatalkan (VOID)", variant: "danger" },
 };
 
 export function paymentStatusLabel(status: string): string {

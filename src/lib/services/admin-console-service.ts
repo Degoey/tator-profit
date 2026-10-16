@@ -1,6 +1,9 @@
 import type { AdminDepositRow } from "@/components/payments/admin-deposit-review";
 import type { AdminWithdrawalRow } from "@/components/payments/admin-withdrawal-review";
 import type { AdminCommissionRow } from "@/components/payments/admin-commission-review";
+import type { AdminMembershipRow } from "@/components/payments/admin-membership-review";
+import type { AdminRewardRow } from "@/components/payments/admin-reward-review";
+import type { AdminMemberRow } from "@/components/payments/admin-member-directory";
 import type { AuditTrailRow } from "@/components/payments/admin-audit-trail";
 import { prisma } from "@/lib/prisma";
 import { listCommissionsForAdmin } from "@/lib/services/admin-commission-service";
@@ -27,11 +30,13 @@ export interface AdminRequestAuditEntry {
   createdAt: Date;
 }
 
-/** Indeks jejak audit per id entitas (deposit, penarikan, komisi). */
+/** Indeks jejak audit per id entitas (deposit, penarikan, komisi, keanggotaan, imbalan). */
 export async function adminRequestAuditIndex(): Promise<Map<string, AdminRequestAuditEntry[]>> {
   const entries = await prisma.auditLog.findMany({
     where: {
-      entityType: { in: ["DepositRequest", "WithdrawalRequest", "ReferralCommission"] },
+      entityType: {
+        in: ["DepositRequest", "WithdrawalRequest", "ReferralCommission", "UserProgram", "Reward"],
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 1000,
@@ -71,6 +76,7 @@ export async function adminConsoleOverview(options: { canReadFraud: boolean }) {
     withdrawalsPending,
     rewardsTotal,
     rewardsPaid,
+    rewardsPending,
     commissionsTotal,
     commissionsPaid,
     commissionsPending,
@@ -91,6 +97,7 @@ export async function adminConsoleOverview(options: { canReadFraud: boolean }) {
     }),
     prisma.reward.count(),
     prisma.reward.aggregate({ where: { status: "PAID" }, _sum: { amount: true } }),
+    prisma.reward.count({ where: { status: "PENDING" } }),
     prisma.referralCommission.count(),
     prisma.referralCommission.aggregate({
       where: { status: "PAID" },
@@ -127,6 +134,7 @@ export async function adminConsoleOverview(options: { canReadFraud: boolean }) {
     withdrawalsPending,
     rewardsTotal,
     rewardsPaid: rewardsPaid._sum.amount ?? 0,
+    rewardsPending,
     commissionsTotal,
     commissionsPaid: commissionsPaid._sum.commissionAmount ?? 0,
     commissionsPending: commissionsPending._sum.commissionAmount ?? 0,
@@ -252,5 +260,154 @@ export async function listAuditTrailForConsole(): Promise<AuditTrailRow[]> {
     userAgent: row.userAgent,
     before: row.before,
     after: row.after,
+  }));
+}
+
+/**
+ * Direktori anggota (hanya baca) untuk petugas.
+ *
+ * Saldo dibaca apa adanya dari `Balance` (tidak ada perhitungan ulang di UI) dan
+ * dihitungkan bersama jumlah keanggotaan aktif/menunggu, supaya petugas dapat
+ * menjawab pertanyaan anggota tanpa membuka Konsol Pemilik. Tidak ada tindakan
+ * uang di sini: menambah saldo tetap milik pemilik (`creditBalance`).
+ */
+export async function listMemberDirectoryForConsole(): Promise<AdminMemberRow[]> {
+  const rows = await prisma.user.findMany({
+    where: { role: "USER" },
+    orderBy: { createdAt: "desc" },
+    take: 300,
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      phone: true,
+      status: true,
+      createdAt: true,
+      lastLoginAt: true,
+      balance: {
+        select: {
+          availableAmount: true,
+          pendingAmount: true,
+          programFundsAmount: true,
+          totalEarned: true,
+        },
+      },
+      userPrograms: { select: { status: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    username: row.username,
+    email: row.email,
+    phone: row.phone,
+    status: row.status,
+    createdAt: row.createdAt,
+    lastLoginAt: row.lastLoginAt,
+    availableAmount: (row.balance?.availableAmount ?? 0).toFixed(2),
+    pendingAmount: (row.balance?.pendingAmount ?? 0).toFixed(2),
+    programFundsAmount: (row.balance?.programFundsAmount ?? 0).toFixed(2),
+    totalEarned: (row.balance?.totalEarned ?? 0).toFixed(2),
+    activeMemberships: row.userPrograms.filter((item) => item.status === "ACTIVE").length,
+    pendingMemberships: row.userPrograms.filter((item) => item.status === "PENDING").length,
+  }));
+}
+
+/**
+ * Antrean keanggotaan program untuk ditindak: seluruh status dimuat (termasuk
+ * PENDING yang menunggu dana dikonfirmasi) karena halaman ini juga tempat
+ * menelusuri keanggotaan lama, bukan hanya antrean tindakan.
+ */
+export async function listMembershipQueueForConsole(options: {
+  auditIndex: Map<string, AdminRequestAuditEntry[]>;
+}): Promise<AdminMembershipRow[]> {
+  const rows = await prisma.userProgram.findMany({
+    orderBy: [{ joinedAt: "desc" }, { id: "desc" }],
+    take: 200,
+    include: {
+      user: { select: { name: true, username: true, email: true } },
+      program: { select: { name: true, code: true } },
+      tier: { select: { code: true, name: true } },
+      cycle: { select: { cycleWeeks: true } },
+      depositRequests: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { status: true, amount: true, currency: true },
+      },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userName: row.user.name,
+    userUsername: row.user.username,
+    userEmail: row.user.email,
+    programName: row.program.name,
+    programCode: row.program.code,
+    tierCode: row.tier.code,
+    tierName: row.tier.name,
+    cycleWeeks: row.cycle?.cycleWeeks ?? row.cycleWeeks,
+    weeklyRewardRate: row.weeklyRewardRate.toString(),
+    maxCycleRewardRate: row.maxCycleRewardRate.toString(),
+    joinAmount: row.joinAmount.toFixed(2),
+    currency: row.currency,
+    fundsConfirmedAmount: row.fundsConfirmedAmount.toFixed(2),
+    fundsConfirmedAt: row.fundsConfirmedAt,
+    status: row.status,
+    cycleNumber: row.cycleNumber,
+    weeksCompleted: row.weeksCompleted,
+    referralCodeUsed: row.referralCodeUsed,
+    joinedAt: row.joinedAt,
+    activatedAt: row.activatedAt,
+    completedAt: row.completedAt,
+    suspendedAt: row.suspendedAt,
+    cancelledAt: row.cancelledAt,
+    notes: row.notes,
+    latestDepositStatus: row.depositRequests[0]?.status ?? null,
+    latestDepositAmount: row.depositRequests[0]
+      ? row.depositRequests[0].amount.toFixed(2)
+      : null,
+    auditHistory: options.auditIndex.get(row.id) ?? [],
+  }));
+}
+
+/**
+ * Antrean imbalan anggota. Baris dimuat untuk semua status karena keputusan
+ * `pay` dan `void` justru sering menyusul baris yang sudah APPROVED atau PAID.
+ */
+export async function listRewardQueueForConsole(options: {
+  auditIndex: Map<string, AdminRequestAuditEntry[]>;
+}): Promise<AdminRewardRow[]> {
+  const rows = await prisma.reward.findMany({
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 200,
+    include: {
+      user: { select: { name: true, username: true, email: true } },
+      program: { select: { name: true } },
+      tier: { select: { code: true } },
+    },
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    userName: row.user.name,
+    userUsername: row.user.username,
+    userEmail: row.user.email,
+    programName: row.program.name,
+    tierCode: row.tier.code,
+    period: row.period,
+    cycleNumber: row.cycleNumber,
+    amount: row.amount.toFixed(2),
+    currency: row.currency,
+    rate: row.rate.toString(),
+    status: row.status,
+    scheduledFor: row.scheduledFor,
+    approvedAt: row.approvedAt,
+    paidAt: row.paidAt,
+    createdAt: row.createdAt,
+    notes: row.notes,
+    auditHistory: options.auditIndex.get(row.id) ?? [],
   }));
 }

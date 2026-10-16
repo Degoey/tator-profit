@@ -22,7 +22,8 @@
     "verify:owner": "tsx scripts/verify-owner-console.ts",
     "verify:admin": "tsx scripts/verify-admin-console.ts",
     "akun:daftar": "tsx scripts/daftar-akun.ts",
-    "petugas:admin": "tsx scripts/petugas-admin.ts"
+    "petugas:admin": "tsx scripts/petugas-admin.ts",
+    "akun:gabung": "tsx scripts/rekam-gabung-anggota.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

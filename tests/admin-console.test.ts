@@ -200,3 +200,94 @@ describe("Panel Admin: penjagaan di server", () => {
     }
   });
 });
+
+describe("Panel Admin: kelengkapan siklus anggota", () => {
+  it("halaman keanggotaan hanya memberi tindakan kepada peran berkapabilitas uang", () => {
+    const page = sourceOf("/admin/keanggotaan");
+
+    assert.ok(page.includes('canAdmin(admin.adminRole, "manageFinance")'));
+    assert.ok(page.includes("listMembershipQueueForConsole"));
+    for (const action of ["activate", "generate", "suspend", "resume", "complete", "cancel"]) {
+      assert.ok(page.includes(`"${action}"`), `aksi ${action} tidak ditawarkan di halaman`);
+    }
+    assert.ok(
+      page.includes(': []'),
+      "peran tanpa manageFinance harus menerima daftar aksi kosong (hanya baca)",
+    );
+  });
+
+  it("halaman imbalan memisahkan catat, setujui, dan bayar", () => {
+    const page = sourceOf("/admin/imbalan");
+    const component = readProjectFile(
+      "src",
+      "components",
+      "payments",
+      "admin-reward-review.tsx",
+    );
+
+    assert.ok(page.includes('canAdmin(admin.adminRole, "manageFinance")'));
+    assert.ok(page.includes("listRewardQueueForConsole"));
+    for (const action of ["approve", "pay", "reject", "void"]) {
+      assert.ok(page.includes(`"${action}"`), `aksi imbalan ${action} tidak ditawarkan`);
+    }
+
+    // "Bayar" hanya muncul setelah baris APPROVED, sehingga saldo tidak pernah
+    // berpindah langsung dari imbalan yang baru dicatat.
+    assert.ok(
+      component.includes('value: "pay"') && component.includes('allowedFrom: ["APPROVED"]'),
+      "aksi bayar harus dibatasi pada baris yang sudah disetujui",
+    );
+    assert.ok(
+      component.includes('value: "approve"') && component.includes('allowedFrom: ["PENDING"]'),
+      "aksi setujui hanya untuk baris yang masih menunggu",
+    );
+  });
+
+  it("direktori anggota hanya membaca dan tidak menawarkan kredit saldo", () => {
+    const page = sourceOf("/admin/anggota");
+    const component = readProjectFile(
+      "src",
+      "components",
+      "payments",
+      "admin-member-directory.tsx",
+    );
+
+    assert.ok(page.includes("listMemberDirectoryForConsole"));
+    assert.equal(component.includes("fetch("), false, "direktori tidak boleh mengirim aksi");
+    assert.equal(page.includes("creditBalance"), false, "kredit saldo tetap milik pemilik");
+  });
+
+  it("istilah Imbalan dipakai untuk imbalan anggota, rabat untuk komisi rujukan", () => {
+    const labels = new Map(ADMIN_CONSOLE_LINKS.map((link) => [link.href, link.label]));
+
+    assert.equal(labels.get("/admin/imbalan"), "Imbalan anggota");
+    assert.equal(labels.get("/admin/rabat"), "Rabat rujukan");
+    assert.ok(
+      sourceOf("/admin/rabat").includes("Persentase rabat"),
+      "halaman rabat harus tetap memuat pengaturan persentase",
+    );
+  });
+
+  it("setiap halaman baru memakai penjagaan panel dan kapabilitasnya sendiri", () => {
+    const membership = sourceOf("/admin/keanggotaan");
+    const rewards = sourceOf("/admin/imbalan");
+    const directory = sourceOf("/admin/anggota");
+
+    for (const [href, source] of [
+      ["/admin/keanggotaan", membership],
+      ["/admin/imbalan", rewards],
+      ["/admin/anggota", directory],
+    ] as const) {
+      assert.ok(source.includes("requireAdminConsole"), `${href} harus memakai penjagaan panel`);
+      assert.equal(
+        source.includes("requireOwnerPage"),
+        false,
+        `${href} bukan halaman pemilik`,
+      );
+    }
+
+    // Direktori boleh dibaca semua peran, jadi tidak boleh bergantung pada
+    // kapabilitas uang apa pun untuk memuat baris.
+    assert.equal(directory.includes("manageFinance"), false, "direktori tidak butuh kapabilitas uang");
+  });
+});

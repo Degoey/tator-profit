@@ -15,10 +15,13 @@ import { canAdmin, type AdminPermission } from "@/lib/auth/admin-permissions";
  */
 export type AdminConsolePath =
   | "/admin"
+  | "/admin/anggota"
+  | "/admin/keanggotaan"
+  | "/admin/imbalan"
   | "/admin/deposit"
   | "/admin/penarikan"
   | "/admin/komisi"
-  | "/admin/imbalan"
+  | "/admin/rabat"
   | "/admin/audit"
   | "/admin/fraud";
 
@@ -39,6 +42,25 @@ export const ADMIN_CONSOLE_LINKS: readonly AdminConsoleLink[] = [
     summary: "Angka antrean dan nilai terkonfirmasi langsung dari database.",
   },
   {
+    href: "/admin/anggota",
+    label: "Anggota",
+    permission: "read",
+    summary: "Direktori anggota beserta saldo dan keanggotaan aktifnya (hanya baca).",
+  },
+  {
+    href: "/admin/keanggotaan",
+    label: "Keanggotaan",
+    permission: "read",
+    summary:
+      "Aktifkan keanggotaan setelah dana diterima, lalu tunda, lanjutkan, selesaikan, atau batalkan.",
+  },
+  {
+    href: "/admin/imbalan",
+    label: "Imbalan anggota",
+    permission: "read",
+    summary: "Catat imbalan periode, setujui, bayarkan, tolak, atau batalkan (VOID).",
+  },
+  {
     href: "/admin/deposit",
     label: "Deposit",
     permission: "read",
@@ -57,10 +79,10 @@ export const ADMIN_CONSOLE_LINKS: readonly AdminConsoleLink[] = [
     summary: "Komisi rujukan: baca untuk semua peran, selesaikan bila berwenang.",
   },
   {
-    href: "/admin/imbalan",
-    label: "Imbalan",
+    href: "/admin/rabat",
+    label: "Rabat rujukan",
     permission: "read",
-    summary: "Persentase rebate per generasi; hanya dapat diubah bila berwenang.",
+    summary: "Persentase rabat per generasi; hanya dapat diubah bila berwenang.",
   },
   {
     href: "/admin/audit",

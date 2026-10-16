@@ -221,10 +221,13 @@ permukaan `/admin/**` di aplikasi yang sama, satu halaman per kapabilitas.
   | Halaman | Kapabilitas halaman | Kewenangan penuh |
   | --- | --- | --- |
   | `/admin` | `read` | — (hanya angka) |
+  | `/admin/anggota` | `read` | — (direktori anggota; saldo dibaca saja) |
+  | `/admin/keanggotaan` | `read` | `manageFinance` (mengaktifkan, menunda, melanjutkan, menyelesaikan, membatalkan) |
+  | `/admin/imbalan` | `read` | `manageFinance` (menyetujui, membayarkan, menolak, membatalkan imbalan) |
   | `/admin/deposit` | `read` | `reviewDeposit`; COMPLIANCE hanya `UNDER_REVIEW`/`FLAGGED` |
   | `/admin/penarikan` | `read` | `reviewWithdrawal` |
   | `/admin/komisi` | `read` | `manageFinance` (menyelesaikan komisi) |
-  | `/admin/imbalan` | `read` | `manageFinance` (mengubah persentase rabat) |
+  | `/admin/rabat` | `read` | `manageFinance` (mengubah persentase rabat rujukan) |
   | `/admin/audit` | `readAudit` | — |
   | `/admin/fraud` | `readFraud` | `reviewFraud` (menutup kasus) |
 
@@ -261,6 +264,52 @@ Pengujiannya: `tests/admin-console.test.ts` (navigasi per peran, kapabilitas pem
 ada di panel, penjagaan di server) dan `tests/pwa-install.test.ts` (manifest anggota vs
 manifest panel, ikon, pintasan yang menunjuk halaman yang benar-benar ada), plus verifikasi
 HTTP `npm run verify:admin` (§8).
+
+## 6f. Siklus keanggotaan dan imbalan anggota (Tahap 14)
+
+Dua halaman ini melengkapi keputusan admin yang sebelumnya hanya ada di lapisan API:
+**`/admin/keanggotaan`** (siklus hidup keanggotaan program) dan **`/admin/imbalan`**
+(imbalan mingguan anggota). Keduanya membaca barisnya lewat satu layanan
+(`listMembershipQueueForConsole`, `listRewardQueueForConsole` di
+`src/lib/services/admin-console-service.ts`), dan seluruh tindakannya tetap lewat rute lama
+`/api/admin/programs` serta `/api/admin/rewards` — halaman panel tidak pernah menyentuh
+layanan ledger langsung.
+
+**Keanggotaan.** Status yang mungkin: `PENDING` → `ACTIVE` → `SUSPENDED`/`COMPLETED`, dengan
+`CANCELLED` sebagai akhir paksa. Admin memilih satu tindakan per baris, bukan memindahkan
+status bebas:
+
+| Tindakan | Dari status | Akibat |
+| --- | --- | --- |
+| `activate` | `PENDING` | Dana yang sudah diterima di luar platform dicatat (`fundsConfirmedAmount`), keanggotaan `ACTIVE`, imbalan periode pertama dicatat |
+| `generate` | `ACTIVE` | Mencatat imbalan satu periode berjalan (idempoten: periode yang sudah ada tidak digandakan) |
+| `suspend` | `ACTIVE` | `SUSPENDED`; hak imbalan berhenti, dana tetap tercatat, alasan wajib |
+| `resume` | `SUSPENDED` | Kembali `ACTIVE` tanpa mengubah jumlah periode yang selesai |
+| `complete` | `ACTIVE`/`SUSPENDED` | `COMPLETED`; siklus ditutup, tidak lagi menerima imbalan baru |
+| `cancel` | `PENDING`/`ACTIVE`/`SUSPENDED` | `CANCELLED`; pengembalian dana (opsional, kotak centang) dicatat sebagai entri penyesuaian, bukan penghapusan riwayat; alasan wajib |
+
+**Imbalan.** Uangnya bergerak dalam tiga langkah yang sengaja dipisah supaya tidak ada saldo
+yang berpindah tanpa keputusan manusia: `approve` (dari `PENDING`) menaruh nilai pada saldo
+menunggu anggota, `pay` (dari `APPROVED`) memindahkannya ke saldo yang dapat dipakai, dan
+`reject`/`void` menghentikannya. `reject` hanya berlaku untuk baris `PENDING`; `void` menutup
+baris apa pun (`PENDING`/`APPROVED`/`PAID`/`REJECTED`) dan, bila imbalannya sudah pernah
+dibayar, pembalikannya tetap tercatat sebagai entri penyesuaian di buku besar. Menunda imbalan
+tidak memerlukan tindakan khusus: cukup biarkan baris berada di `PENDING` atau `APPROVED`
+tanpa menekan bayar.
+
+**Direktori anggota (`/admin/anggota`)** adalah halaman hanya-baca untuk semua peran admin:
+nama, kontak, saldo imbalan (tersedia/menunggu), dana program, dan jumlah keanggotaan aktif.
+Tujuannya agar petugas bisa menjawab pertanyaan anggota tanpa memegang kapabilitas uang —
+kredit saldo (`creditBalance`) tetap milik pemilik di `/owner/pengguna/[id]`.
+
+Pemisahan istilah di panel: **Imbalan anggota** (`/admin/imbalan`) = imbalan mingguan yang
+dibayarkan ke saldo anggota, sedangkan **Rabat rujukan** (`/admin/rabat`, sebelumnya
+`/admin/imbalan`) = persentase komisi rujukan per generasi. Semua baris boleh dibaca peran
+admin mana pun; tindakannya memerlukan `manageFinance` (SUPER_ADMIN/FINANCE), dan peran lain
+menerima pemberitahuan "Peran Anda hanya membaca" alih-alih tombol.
+
+Pengujiannya: `tests/admin-console.test.ts` (grup "kelengkapan siklus anggota") dan
+`npm run verify:admin` (keuangan boleh mengadili, dukungan hanya membaca).
 
 ## 7. Halaman akun dan kebijakan (Bagian 7/7)
 

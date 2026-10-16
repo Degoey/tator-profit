@@ -1,47 +1,43 @@
 import type { Metadata } from "next";
 
 import { AdminShell } from "@/components/admin/admin-shell";
-import { AdminRebateSettings } from "@/components/payments/admin-rebate-settings";
+import { AdminRewardReview } from "@/components/payments/admin-reward-review";
 import { canAdmin } from "@/lib/auth/admin-permissions";
 import { requireAdminConsole } from "@/lib/auth/current-user";
 import { isOwnerAccount } from "@/lib/config/owner";
-import { listRebateConfig } from "@/lib/services/rebate-config-service";
+import { adminRequestAuditIndex, listRewardQueueForConsole } from "@/lib/services/admin-console-service";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Imbalan & rebate" };
+export const metadata: Metadata = { title: "Imbalan anggota" };
 
 /**
- * Persentase rebate per generasi.
+ * Siklus imbalan anggota.
  *
- * Konfigurasinya boleh dibaca semua peran admin, tetapi hanya dapat diubah oleh
- * peran dengan `manageFinance`; formulirnya dirender hanya-baca bila tidak
- * berwenang, dan API-nya menolak aktor lain di server.
+ * Imbalan bergerak dalam tiga langkah yang sengaja dipisah — catat, setujui,
+ * bayarkan — supaya tidak ada saldo yang berpindah tanpa keputusan manusia:
+ * `approve` menaruh nilai pada saldo menunggu, `pay` baru memindahkannya ke saldo
+ * yang dapat dipakai anggota. Baris dapat dibaca seluruh peran admin, sedangkan
+ * tindakannya memerlukan `manageFinance`; API-nya menolak peran lain di server.
  */
-export default async function AdminRebatePage() {
+export default async function AdminRewardPage() {
   const admin = await requireAdminConsole("/admin/imbalan");
-  const canEdit = canAdmin(admin.adminRole, "manageFinance");
-  const rebateConfig = await listRebateConfig();
+  const canManageFinance = canAdmin(admin.adminRole, "manageFinance");
+  const rows = await listRewardQueueForConsole({
+    auditIndex: await adminRequestAuditIndex(),
+  });
 
   return (
     <AdminShell
       active="/admin/imbalan"
-      title="Imbalan & rebate"
-      description="Persentase rebate rujukan per generasi. Angka-angka ini dipakai mesin komisi saat menghitung pembagian hasil, jadi setiap perubahan tercatat dengan aktor dan waktu."
+      title="Imbalan anggota"
+      description="Menyetujui, membayarkan, menolak, atau membatalkan imbalan mingguan anggota. Pencatatan imbalan periode berjalan dijalankan dari halaman Keanggotaan, dan anggota menerima notifikasi setiap kali uang benar-benar berpindah."
       adminRole={admin.adminRole}
       username={admin.username}
       isOwner={isOwnerAccount(admin)}
     >
-      <AdminRebateSettings
-        canEdit={canEdit}
-        fromDatabase={rebateConfig.fromDatabase}
-        rows={rebateConfig.generations.map((row) => ({
-          generation: row.generation,
-          rate: row.rate,
-          displayRate: row.displayRate,
-          percent: row.percent,
-          updatedAt: row.updatedAt,
-          updatedBy: row.updatedBy,
-        }))}
+      <AdminRewardReview
+        rows={rows}
+        allowedActions={canManageFinance ? ["approve", "pay", "reject", "void"] : []}
       />
     </AdminShell>
   );

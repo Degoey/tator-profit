@@ -70,6 +70,12 @@ export default async function AdminConsoleDashboardPage() {
             hint: `Dibayar ${formatMoney(overview.rewardsPaid)}`,
           },
           {
+            label: "Imbalan menunggu keputusan",
+            value: String(overview.rewardsPending),
+            tone: "gold",
+            hint: "Sudah dicatat, belum masuk saldo anggota",
+          },
+          {
             label: "Komisi rujukan",
             value: String(overview.commissionsTotal),
             hint: `Dibayar ${formatMoney(overview.commissionsPaid)}`,

@@ -314,7 +314,10 @@ async function main(): Promise<void> {
     { path: "/admin/deposit", marker: "Antrean deposit", label: "deposit" },
     { path: "/admin/penarikan", marker: "Antrean penarikan", label: "penarikan" },
     { path: "/admin/komisi", marker: "Antrean komisi", label: "komisi" },
-    { path: "/admin/imbalan", marker: "Persentase rabat", label: "imbalan" },
+    { path: "/admin/anggota", marker: "Direktori anggota", label: "direktori anggota" },
+    { path: "/admin/keanggotaan", marker: "Keanggotaan program", label: "keanggotaan" },
+    { path: "/admin/imbalan", marker: "Imbalan anggota", label: "imbalan anggota" },
+    { path: "/admin/rabat", marker: "Persentase rabat", label: "rabat" },
     { path: "/admin/audit", marker: "50 catatan terbaru", label: "jejak audit" },
     { path: "/admin/fraud", marker: "Antrean kasus", label: "anti-fraud" },
   ];
@@ -334,11 +337,25 @@ async function main(): Promise<void> {
     bodyHas(financeDeposit, "Anda dapat menjalankan seluruh tindakan tinjauan"),
     "teks kewenangan penuh",
   );
-  const financeRebate = await finance.get("/admin/imbalan");
+  const financeRebate = await finance.get("/admin/rabat");
   check(
     "keuangan dapat mengubah persentase rabat",
     bodyHas(financeRebate, "Persentase rabat generasi 1"),
     "kolom isian tersedia",
+  );
+  const financeMembership = await finance.get("/admin/keanggotaan");
+  check(
+    "keuangan boleh mengadili keanggotaan (bukan sekadar membaca)",
+    financeMembership.status === 200 && !bodyHas(financeMembership, "Peran Anda hanya membaca"),
+    `HTTP ${financeMembership.status}`,
+  );
+  const financeRewards = await finance.get("/admin/imbalan");
+  check(
+    "keuangan boleh mengadili imbalan anggota (bukan sekadar membaca)",
+    financeRewards.status === 200 &&
+      bodyHas(financeRewards, "setujui, bayarkan, tolak, atau batalkan") &&
+      !bodyHas(financeRewards, "Peran Anda hanya membaca"),
+    `HTTP ${financeRewards.status}`,
   );
   const financeFraud = await finance.get("/admin/fraud");
   check(
@@ -468,11 +485,30 @@ async function main(): Promise<void> {
       !bodyHas(supportFraud, "Status kasus"),
     `HTTP ${supportFraud.status}`,
   );
-  const supportRebate = await support.get("/admin/imbalan");
+  const supportRebate = await support.get("/admin/rabat");
   check(
     "dukungan membaca persentase rabat tanpa dapat mengubahnya",
     supportRebate.status === 200 && !bodyHas(supportRebate, "Persentase rabat generasi 1"),
     `HTTP ${supportRebate.status}`,
+  );
+  for (const page of [
+    { path: "/admin/keanggotaan", label: "keanggotaan" },
+    { path: "/admin/imbalan", label: "imbalan anggota" },
+  ]) {
+    const result = await support.get(page.path);
+    check(
+      `dukungan membaca ${page.label} tanpa tindakan uang`,
+      result.status === 200 && bodyHas(result, "Peran Anda hanya membaca"),
+      `HTTP ${result.status}`,
+    );
+  }
+  const supportDirectory = await support.get("/admin/anggota");
+  check(
+    "dukungan membaca direktori anggota tanpa tindakan uang",
+    supportDirectory.status === 200 &&
+      bodyHas(supportDirectory, "Direktori anggota") &&
+      !bodyHas(supportDirectory, "Tambahkan saldo"),
+    `HTTP ${supportDirectory.status}`,
   );
 
   console.log("\n== VIEWER ==");

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Surface "pemilik": the Konsol Pemilik (super admin) — one account only, guarded
+      by password plus a passkey. OwnerActivity enables the WebView WebAuthn API, so
+      the credential libraries are declared for this flavor only (see
+      app/build.gradle.kts); the member and admin APKs stay dependency-free.
+    -->
+    <application>
+        <!-- Association with this site, needed for passkeys (see strings.xml). -->
+        <meta-data
+            android:name="asset_statements"
+            android:resource="@string/asset_statements" />
+
+        <activity
+            android:name="com.tatorprofit.wrapper.OwnerActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Tatorprofit">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

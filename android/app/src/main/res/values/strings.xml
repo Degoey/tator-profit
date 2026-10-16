@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Launcher label. Mirrors `name` in src/app/manifest.ts. -->
-    <string name="app_name">Tatorprofit Admin</string>
+    <!--
+      Launcher label lives in build.gradle.kts (`resValue "string", "app_name"`),
+      one value per surface: anggota, admin, pemilik. Keeping it there means the
+      label, the package id and the entry URL of a surface are declared in one
+      place instead of three.
+    -->
 
     <string name="external_link_no_app">Tidak ada aplikasi di perangkat ini yang bisa membuka tautan tersebut.</string>
     <string name="download_started">Mengunduh berkas…</string>

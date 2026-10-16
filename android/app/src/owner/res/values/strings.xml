@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Shown when the device's Android System WebView cannot do passkeys, which the
+      Konsol Pemilik requires for its second factor. The app then opens the console
+      in the system browser so the owner is never stuck on a screen they cannot
+      unlock.
+    -->
+    <string name="passkey_unavailable">Perangkat ini belum bisa memakai sidik jari di dalam aplikasi. Konsol Pemilik dibuka di peramban.</string>
+
+    <!--
+      Where a credential provider reads the app/site association for passkeys.
+      The URL must answer 200 with a JSON content type and must not redirect;
+      served by the `/.well-known/assetlinks.json` rewrite in `next.config.ts`.
+      Rotating the release signing key means updating
+      `src/lib/config/android-app-links.ts` as well.
+    -->
+    <string name="asset_statements" translatable="false">[{\"include\": \"https://app.tatorprofitbos.my.id/.well-known/assetlinks.json\"}]</string>
+</resources>

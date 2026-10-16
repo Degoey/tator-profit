@@ -7,14 +7,17 @@
     Tatorprofit mark (produced by `npm run icons`). This script resizes them into
     the Android density buckets so the APK ships no hand-drawn duplicate artwork:
 
-      mipmap-<density>/ic_launcher.png             legacy icon (API < 26)
-      mipmap-<density>/ic_launcher_round.png       legacy round icon
-      mipmap-<density>/ic_launcher_foreground.png  adaptive icon foreground (API 26+)
+      <surface>/res/mipmap-<density>/ic_launcher.png             legacy icon (API < 26)
+      <surface>/res/mipmap-<density>/ic_launcher_round.png       legacy round icon
+      <surface>/res/mipmap-<density>/ic_launcher_foreground.png  adaptive foreground (API 26+)
 
-    The wrapper is the **admin** surface, so it takes the admin artwork
-    (`admin-512.png`, `admin-maskable-512.png`) — the same files
-    `/admin/manifest.webmanifest` serves, which is what keeps the launcher icon
-    from drifting away from the icon the browser installs.
+    One project ships three surfaces, and each one wears the artwork of the PWA
+    manifest it wraps — the same files that manifest serves, which is what keeps
+    the launcher icon from drifting away from the icon the browser installs:
+
+      anggota  icon-512.png           + maskable-512.png
+      admin    admin-512.png          + admin-maskable-512.png
+      pemilik  owner-512.png          + owner-maskable-512.png
 
     The adaptive foreground is a transparent canvas with the mark centred at 62%
     of its size, which keeps it inside the 66dp safe zone of the 108dp layer.
@@ -32,7 +35,7 @@
 [CmdletBinding()]
 param(
     [string] $SourceDirectory = (Join-Path $PSScriptRoot '..\..\public\icons'),
-    [string] $ResDirectory = (Join-Path $PSScriptRoot '..\app\src\main\res')
+    [string] $ResDirectory = (Join-Path $PSScriptRoot '..\app\src')
 )
 
 Set-StrictMode -Version Latest
@@ -129,33 +132,44 @@ function New-AdaptiveForegroundPng {
     }
 }
 
-$squareSource = Join-Path $SourceDirectory 'admin-512.png'
-$maskableSource = Join-Path $SourceDirectory 'admin-maskable-512.png'
+# Surface -> its two source artworks in public/icons. Each surface wears the
+# artwork of the PWA manifest it wraps, so the launcher icon cannot drift from the
+# icon the browser installs.
+$surfaces = [ordered]@{
+    'anggota' = @{ Square = 'icon-512.png';  Maskable = 'maskable-512.png' }
+    'admin'   = @{ Square = 'admin-512.png'; Maskable = 'admin-maskable-512.png' }
+    'owner'   = @{ Square = 'owner-512.png'; Maskable = 'owner-maskable-512.png' }
+}
 
-foreach ($candidate in @($squareSource, $maskableSource)) {
-    if (-not (Test-Path -LiteralPath $candidate)) {
-        throw "Missing source icon '$candidate'. Run 'npm run icons' first."
+foreach ($surface in $surfaces.Keys) {
+    $squareSource = Join-Path $SourceDirectory $surfaces[$surface].Square
+    $maskableSource = Join-Path $SourceDirectory $surfaces[$surface].Maskable
+
+    foreach ($candidate in @($squareSource, $maskableSource)) {
+        if (-not (Test-Path -LiteralPath $candidate)) {
+            throw "Missing source icon '$candidate'. Run 'npm run icons' first."
+        }
+    }
+
+    foreach ($density in $densities.Keys) {
+        $size = $densities[$density]
+        $folder = Join-Path $ResDirectory "$surface/res/mipmap-$density"
+
+        New-ResizedPng -SourcePath $squareSource -Size $size `
+            -DestinationPath (Join-Path $folder 'ic_launcher.png')
+
+        # The maskable artwork is full bleed, which is exactly what a round mask wants.
+        New-ResizedPng -SourcePath $maskableSource -Size $size `
+            -DestinationPath (Join-Path $folder 'ic_launcher_round.png')
+
+        $layerSize = [int][Math]::Round($size * $adaptiveLayerRatio)
+        New-AdaptiveForegroundPng -SourcePath $squareSource -LayerSize $layerSize `
+            -DestinationPath (Join-Path $folder 'ic_launcher_foreground.png')
+
+        Write-Host "+ $surface/mipmap-$density/ic_launcher.png ${size}x${size}"
+        Write-Host "+ $surface/mipmap-$density/ic_launcher_round.png ${size}x${size}"
+        Write-Host "+ $surface/mipmap-$density/ic_launcher_foreground.png ${layerSize}x${layerSize}"
     }
 }
 
-foreach ($density in $densities.Keys) {
-    $size = $densities[$density]
-    $folder = Join-Path $ResDirectory "mipmap-$density"
-
-    New-ResizedPng -SourcePath $squareSource -Size $size `
-        -DestinationPath (Join-Path $folder 'ic_launcher.png')
-
-    # The maskable artwork is full bleed, which is exactly what a round mask wants.
-    New-ResizedPng -SourcePath $maskableSource -Size $size `
-        -DestinationPath (Join-Path $folder 'ic_launcher_round.png')
-
-    $layerSize = [int][Math]::Round($size * $adaptiveLayerRatio)
-    New-AdaptiveForegroundPng -SourcePath $squareSource -LayerSize $layerSize `
-        -DestinationPath (Join-Path $folder 'ic_launcher_foreground.png')
-
-    Write-Host "+ mipmap-$density/ic_launcher.png ${size}x${size}"
-    Write-Host "+ mipmap-$density/ic_launcher_round.png ${size}x${size}"
-    Write-Host "+ mipmap-$density/ic_launcher_foreground.png ${layerSize}x${layerSize}"
-}
-
-Write-Host "Ikon Android siap di $ResDirectory"
+Write-Host "Ikon Android siap di $ResDirectory/<permukaan>/res"

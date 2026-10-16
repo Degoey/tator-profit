@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """Regenerate the Android launcher icons from the canonical PWA icons.
 
-This is the Linux/CI twin of `generate-icons.ps1` and produces byte-for-byte the
-same *rules*, not the same bytes: same densities, same sizes, same 62% mark on
-the adaptive layer. Use whichever one runs on the machine at hand; never edit the
-PNGs in `app/src/main/res/mipmap-*` by hand.
+This is the Linux/CI twin of `generate-icons.ps1` and applies the same *rules*,
+not the same bytes: same densities, same sizes, same 62% mark on the adaptive
+layer. Use whichever one runs on the machine at hand; never edit the PNGs under
+`app/src/<surface>/res/mipmap-*` by hand.
 
-Source of truth is `public/icons`. The wrapper is the **admin** surface, so it
-wears the admin artwork (`admin-512.png` / `admin-maskable-512.png`) — the same
-files `/admin/manifest.webmanifest` points at, which keeps the launcher icon and
-the browser-installed icon from drifting apart.
+Source of truth is `public/icons`, and each surface wears the artwork of the PWA
+manifest it wraps, so the launcher icon can never drift from the icon the browser
+installs:
+
+    anggota  icon-512.png           + maskable-512.png
+    admin    admin-512.png          + admin-maskable-512.png
+    pemilik  owner-512.png          + owner-maskable-512.png
 
     python3 android/tools/generate-icons.py
 
-Writes, per density bucket (mdpi … xxxhdpi):
+Writes, per surface and density bucket (mdpi … xxxhdpi), into
+`app/src/<surface>/res/`:
     mipmap-<density>/ic_launcher.png             legacy icon, API < 26
     mipmap-<density>/ic_launcher_round.png       legacy round icon
     mipmap-<density>/ic_launcher_foreground.png  adaptive foreground, API 26+
@@ -28,7 +32,7 @@ from PIL import Image
 
 AKAR = Path(__file__).resolve().parents[2]
 SUMBER = AKAR / "public" / "icons"
-RES = AKAR / "android" / "app" / "src" / "main" / "res"
+SRC = AKAR / "android" / "app" / "src"
 
 # Density bucket -> legacy icon size in pixels (mdpi is 1x).
 DENSITAS = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
@@ -39,8 +43,12 @@ RASIO_LAPISAN = 2.25
 # Share of the adaptive layer the mark occupies (safe zone is ~61%).
 RASIO_MARK = 0.62
 
-BERKAS_KOTAK = "admin-512.png"
-BERKAS_MASKABLE = "admin-maskable-512.png"
+# Surface -> (square artwork, maskable artwork) inside public/icons.
+PERMUKAAN = {
+    "anggota": ("icon-512.png", "maskable-512.png"),
+    "admin": ("admin-512.png", "admin-maskable-512.png"),
+    "owner": ("owner-512.png", "owner-maskable-512.png"),
+}
 
 
 def sisipkan_tengah(kanvas: int, logo: Image.Image, pangsa: float) -> Image.Image:
@@ -53,19 +61,13 @@ def sisipkan_tengah(kanvas: int, logo: Image.Image, pangsa: float) -> Image.Imag
     return keluaran
 
 
-def main() -> int:
-    kotak_berkas = SUMBER / BERKAS_KOTAK
-    maskable_berkas = SUMBER / BERKAS_MASKABLE
-    for calon in (kotak_berkas, maskable_berkas):
-        if not calon.exists():
-            print(f"Ikon sumber tidak ada: {calon}. Jalankan 'npm run icons' dulu.", file=sys.stderr)
-            return 1
-
+def tulis_ikon(permukaan: str, kotak_berkas: Path, maskable_berkas: Path) -> None:
+    res = SRC / permukaan / "res"
     kotak = Image.open(kotak_berkas).convert("RGBA")
     maskable = Image.open(maskable_berkas).convert("RGBA")
 
     for densitas, sisi in DENSITAS.items():
-        folder = RES / f"mipmap-{densitas}"
+        folder = res / f"mipmap-{densitas}"
         folder.mkdir(parents=True, exist_ok=True)
 
         kotak.resize((sisi, sisi), Image.LANCZOS).save(folder / "ic_launcher.png")
@@ -75,11 +77,23 @@ def main() -> int:
         lapisan = round(sisi * RASIO_LAPISAN)
         sisipkan_tengah(lapisan, kotak, RASIO_MARK).save(folder / "ic_launcher_foreground.png")
 
-        print(f"+ mipmap-{densitas}/ic_launcher.png {sisi}x{sisi}")
-        print(f"+ mipmap-{densitas}/ic_launcher_round.png {sisi}x{sisi}")
-        print(f"+ mipmap-{densitas}/ic_launcher_foreground.png {lapisan}x{lapisan}")
+    print(f"+ {permukaan}: {len(DENSITAS)} densitas dari {kotak_berkas.name}")
 
-    print(f"Ikon Android siap di {RES}")
+
+def main() -> int:
+    for permukaan, (kotak_nama, maskable_nama) in PERMUKAAN.items():
+        kotak_berkas = SUMBER / kotak_nama
+        maskable_berkas = SUMBER / maskable_nama
+        for calon in (kotak_berkas, maskable_berkas):
+            if not calon.exists():
+                print(
+                    f"Ikon sumber tidak ada: {calon}. Jalankan 'npm run icons' dulu.",
+                    file=sys.stderr,
+                )
+                return 1
+        tulis_ikon(permukaan, kotak_berkas, maskable_berkas)
+
+    print(f"Ikon Android siap di {SRC}/<permukaan>/res")
     return 0
 
 

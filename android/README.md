@@ -1,11 +1,18 @@
-# Tatorprofit Admin â€” Android wrapper
+# Tatorprofit Android wrapper
 
-A deliberately thin Android shell around the **already deployed** Next.js
-application. It renders the web app in a hardened `WebView`; it contains no
-business logic, no local database and no bundled copy of the web UI.
+One Gradle project that ships **three separate Android apps** around the
+**already deployed** Next.js application. Each app renders one web surface in a
+hardened `WebView`; none of them contains business logic, a local database or a
+bundled copy of the web UI.
+
+| Surface | Package id | Entry URL | Launcher label | Icon |
+| --- | --- | --- | --- | --- |
+| `anggota` | `com.tatorprofit.app` | `/dashboard` | Tatorprofit | green |
+| `admin` | `com.tatorprofit.admin` | `/admin` | Tatorprofit Admin | blue |
+| `owner` | `com.tatorprofit.owner` | `/owner` | Tatorprofit Pemilik | gold |
 
 That is the whole point: authentication, RBAC (`requireAdminCapability`), the
-audit trail and every money rule stay on the server, so the APK can never show a
+audit trail and every money rule stay on the server, so an APK can never show a
 number the web app would not show, and it never stores a balance on the device.
 
 ---
@@ -31,45 +38,52 @@ sdk.dir=C:/Users/<you>/AppData/Local/Android/Sdk
 the same value with doubled backslashes, e.g. `sdk.dir=C\:` followed by the path
 with every separator doubled; both forms resolve to the same directory.)
 
-There are **no runtime dependencies**: the app is one Activity, two WebView
-clients and Android framework classes only.
+The `anggota` and `admin` apps have **no runtime dependencies**: one Activity, two
+WebView clients and Android framework classes only. The `owner` app adds the
+credential libraries it needs for passkeys (section 6) — declared for that flavor
+alone, so a third-party library can never sit inside an officer's session.
 
 ---
 
-## 2. Point it at your server
+## 2. Point each surface at your server
 
-The entry URL is a single Gradle property, `tatorprofit.appUrl`, defined in
+The entry URL is one Gradle property per surface, defined in
 `android/gradle.properties`:
 
 ```properties
-tatorprofit.appUrl=http://10.0.2.2:3000/admin
+tatorprofit.anggotaUrl=http://10.0.2.2:3000/dashboard
+tatorprofit.adminUrl=http://10.0.2.2:3000/admin
+tatorprofit.ownerUrl=http://10.0.2.2:3000/owner
 ```
 
-* `10.0.2.2` is the **emulator's alias for the host machine**, so the default
-  reaches `npm run dev` running on your PC. On a physical device use the LAN IP
-  of that machine (`http://192.168.x.x:3000/admin`) or, better, the deployed
-  HTTPS origin.
+* `10.0.2.2` is the **emulator's alias for the host machine**, so the defaults
+  reach `npm run dev` running on your PC. On a physical device use the LAN IP of
+  that machine (`http://192.168.x.x:3000/admin`) or, better, the deployed HTTPS
+  origin.
 * Override per build instead of editing the file:
 
   ```powershell
-  .\gradlew.bat assembleDebug "-Ptatorprofit.appUrl=https://app.tatorprofit.id/admin"
+  .\gradlew.bat assembleDebug "-Ptatorprofit.ownerUrl=https://app.tatorprofitbos.my.id/owner"
   ```
 
   > **Quote the whole argument.** Without the quotes, PowerShell/cmd splits
   > `-Pname=value` at the `=` and Gradle reports
-  > `Cannot locate tasks that match '.appUrl=https'`. In `cmd.exe` the quotes are
-  > harmless.
+  > `Cannot locate tasks that match '.ownerUrl=https'`. In `cmd.exe` the quotes
+  > are harmless.
 
-* `/admin` matches `start_url` in `src/app/manifest.ts`. The server guard
-  redirects a signed-in member to `/dashboard`, so the same APK is safe for both
-  roles.
+* Each path matches the `start_url` of the matching PWA manifest
+  (`src/app/manifest.ts`, `src/lib/config/admin-manifest.ts`,
+  `src/app/owner/manifest.webmanifest/route.ts`). The server guard sends a
+  signed-in member to `/dashboard` and refuses a non-admin at `/admin`, so an app
+  opened by the wrong role shows the web app's own refusal instead of a local
+  screen.
 
 Cleartext HTTP is only allowed by the **debug** network policy. A release build
 therefore refuses to start against an `http://` URL, and it refuses to build at
-all without an `https://` URL:
+all without `https://` URLs:
 
 ```
-> Release requires an HTTPS appUrl
+> Release requires an HTTPS tatorprofit.ownerUrl
 ```
 
 ---
@@ -79,49 +93,23 @@ all without an `https://` URL:
 ```powershell
 cd android
 
-# Debug APK -> android/app/build/outputs/apk/debug/app-debug.apk
+# All three debug APKs -> app/build/outputs/apk/<surface>/debug/app-<surface>-debug.apk
 .\gradlew.bat assembleDebug
 
-# Install on the connected device/emulator
-.\gradlew.bat installDebug
-
-# Release (needs keystore.properties, see below)
+# All three release APKs (needs keystore.properties, see below)
 .\gradlew.bat assembleRelease
-.\gradlew.bat bundleRelease      # AAB for Play
+
+# One surface only
+.\gradlew.bat assembleOwnerRelease
+.\gradlew.bat assembleAdminRelease
+.\gradlew.bat assembleAnggotaRelease
 ```
 
-Debug builds use the package id `com.tatorprofit.admin.debug` (suffix added by
-`applicationIdSuffix`), so a test build never overwrites a real install. Release
-builds use `com.tatorprofit.admin`.
+Debug builds add the suffix `.debug` to the package id
+(`com.tatorprofit.owner.debug`), so a test build never overwrites a real install.
+Release builds use the ids in the table above.
 
-### Prebuilt debug APKs (`android/dist/`)
-
-Because the entry URL is compiled in, one APK cannot serve both an emulator and a
-physical phone. Two ready-to-install debug builds are kept in `android/dist/`
-(both git-ignored via `*.apk`):
-
-| File | Entry URL | Use it for |
-| --- | --- | --- |
-| `tatorprofit-admin-debug-emulator.apk` | `http://10.0.2.2:3000/admin` | an AVD on the same PC as `npm run dev` |
-| `tatorprofit-admin-debug-lan.apk` | `http://192.168.1.15:3000/admin` | a phone on the same Wi-Fi (replace the IP with your PC's) |
-
-Rebuild them with:
-
-```powershell
-cd android
-.\gradlew.bat assembleDebug
-Copy-Item app\build\outputs\apk\debug\app-debug.apk dist\tatorprofit-admin-debug-emulator.apk -Force
-
-.\gradlew.bat assembleDebug "-Ptatorprofit.appUrl=http://<your-lan-ip>:3000/admin"
-Copy-Item app\build\outputs\apk\debug\app-debug.apk dist\tatorprofit-admin-debug-lan.apk -Force
-```
-
-Install on the running emulator/device with `adb install -r <file>` (add
-`-t` if the device rejects a debug build). A LAN build only works while
-`npm run dev` is running **and** Windows Firewall allows inbound TCP 3000;
-`10.0.2.2` needs no firewall rule because it never leaves the host.
-
-#### Reaching `npm run dev` from a non-localhost origin
+### Reaching `npm run dev` from a non-localhost origin
 
 Two server-side gates must be opened before a phone or an emulator WebView can
 talk to the dev server. Both are development-only; neither affects a production
@@ -157,16 +145,23 @@ Copy-Item keystore.properties.example keystore.properties
 
 `keystore.properties`, `*.jks` and every `*.apk`/`*.aab` are git-ignored. A
 release build **never** falls back to the shared debug key: without
-`keystore.properties` the release task fails on purpose.
+`keystore.properties` the release task fails on purpose. All three surfaces are
+signed with the same key, which is what lets an installed app be updated in place
+— and what makes the published certificate fingerprint in
+`src/lib/config/android-app-links.ts` meaningful.
 
 ---
 
 ## 4. Launcher icons
 
-The icons are generated from the canonical PWA artwork in `public/icons`, so the
-launcher icon and the browser-installed icon cannot drift apart. The wrapper is
-the **admin** surface, so it takes the admin artwork (`admin-512.png`,
-`admin-maskable-512.png`) — the same files `/admin/manifest.webmanifest` serves.
+The icons are generated from the canonical PWA artwork in `public/icons`, so each
+launcher icon matches the icon its own PWA manifest serves:
+
+| Surface | Square artwork | Maskable artwork |
+| --- | --- | --- |
+| `anggota` | `icon-512.png` | `maskable-512.png` |
+| `admin` | `admin-512.png` | `admin-maskable-512.png` |
+| `owner` | `owner-512.png` | `owner-maskable-512.png` |
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File android/tools/generate-icons.ps1
@@ -179,7 +174,8 @@ the same rules:
 python3 android/tools/generate-icons.py
 ```
 
-It writes, for each density bucket (`mdpi` â€¦ `xxxhdpi`):
+Both write, per surface and density bucket (`mdpi` … `xxxhdpi`), into
+`app/src/<surface>/res/`:
 
 | File | Purpose |
 | --- | --- |
@@ -187,21 +183,21 @@ It writes, for each density bucket (`mdpi` â€¦ `xxxhdpi`):
 | `ic_launcher_round.png` | legacy round icon |
 | `ic_launcher_foreground.png` | adaptive foreground (108dp layer, mark at 62%) |
 
-`res/mipmap-anydpi-v26/ic_launcher.xml` composes the adaptive icon from that
-foreground plus the brand ink background. The PowerShell script uses
-`System.Drawing`, so it needs no npm package; the Python twin needs Pillow
-(`pip install pillow`) and nothing else.
+`app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` composes the adaptive icon
+from that foreground plus the brand ink background, for every surface. The
+PowerShell script uses `System.Drawing`, so it needs no npm package; the Python
+twin needs Pillow (`pip install pillow`) and nothing else.
 
 ---
 
 ## 5. Security posture
 
-`tests/android-wrapper.test.ts` locks every item below, so a change that weakens
-the wrapper fails `npm test`.
+`tests/android-wrapper.test.ts` locks every item below — for all three surfaces —
+so a change that weakens one APK fails `npm test`.
 
 | Concern | Behaviour |
 | --- | --- |
-| Permissions | only `INTERNET` and `ACCESS_NETWORK_STATE`; no camera, location, contacts or storage |
+| Permissions | the declared manifest asks only for `INTERNET` and `ACCESS_NETWORK_STATE`; no camera, location, contacts or storage |
 | Transport | cleartext refused (release `network_security_config`); mixed content `NEVER_ALLOW` |
 | TLS | `onReceivedSslError` always calls `handler.cancel()`; `proceed()` appears nowhere |
 | Navigation | only the configured origin replaces the document; other hosts and `mailto`/`tel`/`whatsapp` open in the system; `file:`, `content:` and `intent:` are blocked |
@@ -212,41 +208,66 @@ the wrapper fails `npm test`.
 
 `WebView.setWebContentsDebuggingEnabled(true)` is debug-only.
 
+The `owner` APK's merged manifest additionally carries `USE_BIOMETRIC`,
+`USE_FINGERPRINT` and a private `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`, all
+contributed by the credential libraries the passkey support needs. The `anggota`
+and `admin` APKs carry none of them.
+
 ---
 
-## 6. What is intentionally not here
+## 6. Passkeys in the owner app
 
-* **No `assetlinks.json`.** Digital Asset Links are only needed for a Trusted Web
-  Activity (no URL bar at all). It requires a published HTTPS origin plus the
-  release keystore SHA-256, so it can only be created once the production domain
-  and upload key exist. The debug key fingerprint reported by
-  `apksigner verify --print-certs` is the shared public Android debug key and
-  must never be published in `assetlinks.json`.
-* **No push notifications, no background sync, no offline data.** The panel is
+The Konsol Pemilik (`/owner`) requires a passkey as its second factor. A plain
+WebView refuses `navigator.credentials`, so the owner app enables the WebView
+WebAuthn API in `OwnerActivity` (`WebSettingsCompat.setWebAuthenticationSupport`).
+Three things must hold, or the owner sees a console they can never unlock:
+
+1. **The credential libraries**, declared for the `owner` flavor only
+   (`androidx.webkit`, `androidx.credentials`, `credentials-play-services-auth`).
+2. **Digital Asset Links.** The web app serves
+   `/.well-known/assetlinks.json` (a rewrite to `/api/android/assetlinks`) naming
+   `com.tatorprofit.owner` and the release certificate's SHA-256 fingerprint. It
+   must answer `200` with a JSON content type and must **not** redirect. Rotating
+   the signing key means updating `src/lib/config/android-app-links.ts` and
+   redeploying — otherwise the fingerprint prompt silently stops appearing.
+3. **An up-to-date Android System WebView** on the device.
+
+If the device cannot do passkeys at all, the app says so and opens the console in
+the system browser instead of showing a dead screen.
+
+---
+
+## 7. What is intentionally not here
+
+* **No push notifications, no background sync, no offline data.** Every surface is
   live-server-only by design.
-* **No renderer-crash recovery.** If the WebView renderer process is killed by
-  the system, Android restarts the app from the entry URL.
+* **No renderer-crash recovery.** If the WebView renderer process is killed by the
+  system, Android restarts the app from the entry URL.
 * **No deep links / app shortcuts.** The PWA manifest shortcuts still work in the
-  browser-installed app.
+  browser-installed app. The assetlinks statement deliberately grants only
+  `delegate_permission/common.get_login_creds`, not `common.handle_all_urls`.
+* **No native money logic.** No balance, no queue, no receipt is computed on the
+  device.
 
-Data inside the app still requires the Next.js server (and its database) to be
+Data inside an app still requires the Next.js server (and its database) to be
 reachable; the wrapper adds no fallback of its own.
 
 ---
 
-## 7. Tests
+## 8. Tests
 
 ```powershell
 npx tsx --test tests/android-wrapper.test.ts
 ```
 
-37 assertions over the manifest, the network policies, the Activity source, the
-brand tokens, the icons, the offline asset and (when present) the built APK. No
-database, no emulator and no build are required.
+50 assertions over the shared manifest, the per-surface manifests, the network
+policies, the Activity sources, the brand tokens, the icons, the passkey/assetlinks
+wiring, the offline asset and (when present) the built APKs. No database, no
+emulator and no build are required.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Cause / fix |
 | --- | --- |
@@ -254,7 +275,8 @@ database, no emulator and no build are required.
 | Blank page on a phone | `localhost` points at the phone; use the LAN IP or the deployed origin |
 | `ERR_CLEARTEXT_NOT_PERMITTED` | an `http://` URL in a release build; use HTTPS or a debug build |
 | `SDK location not found` | create `android/local.properties` (section 1) |
-| `Release requires an HTTPS appUrl` | pass `"-Ptatorprofit.appUrl=https://â€¦"` (quoted) |
-| `Cannot locate tasks that match '.appUrl=https'` | unquoted `-Pâ€¦=â€¦` argument; wrap it in quotes |
+| `Release requires an HTTPS tatorprofit.<surface>Url` | pass the property with an `https://` value (quoted) |
+| `Cannot locate tasks that match '.ownerUrl=https'` | unquoted `-P…=…` argument; wrap it in quotes |
 | `Release requires your own keystore.properties` | create it from `keystore.properties.example` |
+| Passkey prompt never appears in the owner app | check `/.well-known/assetlinks.json` answers `200` JSON with no redirect, that the fingerprint matches `apksigner verify --print-certs`, and that Android System WebView is current |
 | Debugging the page | debug builds only: `chrome://inspect` on the host machine |

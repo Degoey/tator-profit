@@ -41,6 +41,21 @@ const nextConfig: NextConfig = {
     .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0),
+  /**
+   * Digital Asset Links must answer at the domain root, on the exact path Android
+   * fetches. The handler lives under `/api` because the app router does not scan
+   * dot-directories; a rewrite keeps the public path while staying a `200` (a
+   * redirect would fail verification and silently disable passkeys in the owner
+   * app).
+   */
+  async rewrites() {
+    return [
+      {
+        source: "/.well-known/assetlinks.json",
+        destination: "/api/android/assetlinks",
+      },
+    ];
+  },
   async headers() {
     return [
       {

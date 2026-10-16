@@ -1,4 +1,4 @@
-package com.tatorprofit.admin;
+package com.tatorprofit.wrapper;
 
 import android.app.Activity;
 import android.app.DownloadManager;
@@ -39,10 +39,15 @@ import java.util.Locale;
 
 
 /**
- * The whole Android app: one Activity that renders the deployed Tatorprofit web
- * application inside a hardened WebView.
+ * The shared body of every Tatorprofit Android surface: one Activity that renders
+ * one deployed Tatorprofit web surface inside a hardened WebView.
  *
- * Why a WebView and not a native rewrite: the panel already ships its own
+ * One project ships three surfaces — anggota, admin and pemilik — which differ
+ * only in package id, launcher name, icon, entry URL and (for the owner console)
+ * passkey support. Everything below is common to all three, so a hardening fix
+ * lands in every APK at once instead of drifting between copies.
+ *
+ * Why a WebView and not a native rewrite: each surface already ships its own
  * authentication, RBAC, audit trail and money rules on the server. Wrapping the
  * same origin keeps a single source of truth, so the APK can never show numbers
  * the web app would not show, and it never stores a balance locally.
@@ -57,9 +62,9 @@ import java.util.Locale;
  *   - the session cookie stays in the WebView cookie jar; this class never reads
  *     it except to authenticate a download it explicitly starts.
  */
-public class MainActivity extends Activity {
+public abstract class WrapperActivity extends Activity {
 
-    private static final String TAG = "TatorprofitAdmin";
+    private static final String TAG = "TatorprofitWrapper";
 
     private static final int REQUEST_FILE_CHOOSER = 0x10;
 
@@ -134,6 +139,9 @@ public class MainActivity extends Activity {
         created.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
         configureSettings(created.getSettings());
+        // Surface-specific policy hook (the owner console enables passkey support
+        // here). The default implementation adds nothing.
+        onWebViewReady(created, created.getSettings());
 
         created.setWebViewClient(new AppWebViewClient());
         created.setWebChromeClient(new AppWebChromeClient());
@@ -216,7 +224,20 @@ public class MainActivity extends Activity {
         return true;
     }
 
-    private void openExternally(Uri uri) {
+    /**
+     * Hook called once the WebView exists and its settings are configured, before
+     * any page loads. Surfaces that need extra WebView policy override it; the
+     * default is deliberately empty so the member and admin APKs add nothing.
+     */
+    protected void onWebViewReady(WebView webView, WebSettings settings) {
+    }
+
+    /**
+     * Hands a URL to another app. Kept protected so a surface-specific subclass can
+     * use it as a fallback (e.g. when the device cannot do passkeys inside a
+     * WebView, the owner console opens in the system browser instead).
+     */
+    protected void openExternally(Uri uri) {
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, uri));
         } catch (ActivityNotFoundException error) {

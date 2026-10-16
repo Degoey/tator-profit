@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Surface "admin": the panel for the officers the owner appoints (deposit,
+      penarikan, komisi, imbalan, jejak audit, anti-fraud). Plain web surface — no
+      extra WebView policy, no extra dependency. The panel has no second factor, so
+      it needs no passkey plumbing.
+    -->
+    <application>
+        <activity
+            android:name="com.tatorprofit.wrapper.SurfaceActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Tatorprofit">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
